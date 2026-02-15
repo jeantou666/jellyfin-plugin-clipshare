@@ -32,5 +32,15 @@
         "timestamp": "2026-02-15T20:22:52Z"
       }
     ]
+  },
+  {
+    "guid": "clipshare-web",
+    "name": "ClipShare Web UI",
+    "description": "Adds clip button in player",
+    "overview": "Clip tool",
+    "owner": "jeantou666",
+    "category": "General",
+    "versions": [
+    ]
   }
 ]
