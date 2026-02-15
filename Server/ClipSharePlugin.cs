@@ -9,7 +9,7 @@ namespace ClipShare
     public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages
     {
         public override string Name => "ClipShare";
-        public override Guid Id => Guid.Parse("d9c4e7f4-6a5c-4c6b-9c1f-clipshare0001");
+        public override Guid Id => Guid.Parse("7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21");
 
         public ClipSharePlugin(IApplicationPaths applicationPaths, ILogger<ClipSharePlugin> logger)
             : base(applicationPaths, logger)
