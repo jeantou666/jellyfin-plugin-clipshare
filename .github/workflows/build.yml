@@ -24,15 +24,9 @@ jobs:
       - name: Build server plugin
         run: dotnet publish Server/ClipShare.csproj -c Release -o publish
 
-      - name: Prepare server package
+      - name: Zip server plugin
         run: |
-          mkdir serverpkg
-          cp publish/ClipShare.dll serverpkg/
-          cp Server/manifest.json serverpkg/
-
-      - name: Zip server
-        run: |
-          cd serverpkg
+          cd publish
           zip -r ../clipshare-server-${GITHUB_REF_NAME}.zip *
 
       # ---------------- WEB BUILD ----------------
