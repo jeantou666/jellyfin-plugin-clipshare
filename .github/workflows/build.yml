@@ -1,4 +1,4 @@
-name: Build and Release Plugin
+name: Build Plugin
 
 on:
   push:
@@ -19,17 +19,8 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-          
-      - name: Download Jellyfin
-        run: |
-          curl -L https://github.com/jellyfin/jellyfin/releases/download/v10.11.5/jellyfin_10.11.5_linux-x64.tar.gz -o jellyfin.tar.gz
-          mkdir jellyfin
-          tar -xzf jellyfin.tar.gz -C jellyfin --strip-components=1
 
-      - name: Build
-        run: dotnet build Server/ClipShare.csproj -c Release
-
-      - name: Publish
+      - name: Publish Plugin
         run: dotnet publish Server/ClipShare.csproj -c Release -o publish
 
       - name: Zip plugin
@@ -37,7 +28,7 @@ jobs:
           cd publish
           zip -r ../clipshare.zip .
 
-      - name: Create Release and Upload Asset
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: clipshare.zip
