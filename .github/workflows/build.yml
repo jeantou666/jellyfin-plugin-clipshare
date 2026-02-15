@@ -19,6 +19,12 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+          
+      - name: Download Jellyfin
+        run: |
+          curl -L https://repo.jellyfin.org/releases/server/linux/stable/combined/jellyfin_10.11.5_amd64.tar.gz -o jellyfin.tar.gz
+          mkdir jellyfin
+          tar -xzf jellyfin.tar.gz -C jellyfin --strip-components=1
 
       - name: Restore
         run: dotnet restore Server/ClipShare.csproj
