@@ -8,15 +8,13 @@ using MediaBrowser.Model.Serialization;
 
 namespace ClipShare;
 
-public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages, IHasClientEntryPoint
+public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
     public static ClipSharePlugin? Instance { get; private set; }
 
     public override string Name => "ClipShare";
 
     public override Guid Id => Guid.Parse("7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21");
-
-    public string ClientEntryPoint => "clipshare.js";
 
     public ClipSharePlugin(
         IServerApplicationPaths applicationPaths,
