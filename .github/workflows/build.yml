@@ -84,41 +84,43 @@ jobs:
     - name: Update repository manifest
       run: |
         VERSION=${GITHUB_REF_NAME#v}
-        SERVER_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-server.zip"
-        WEB_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-web.zip"
+        URL_SERVER="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-server.zip"
+        URL_WEB="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-web.zip"
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
         tmp=$(mktemp)
 
-        jq --arg version "$VERSION" \
-           --arg serverUrl "$SERVER_URL" \
-           --arg webUrl "$WEB_URL" \
-           --arg serverSha "$SERVER_SHA" \
-           --arg webSha "$WEB_SHA" \
-           --arg ts "$TIMESTAMP" \
-           '
-           .[0].versions |=
-           ([{
-              version: $version,
-              changelog: "Auto build",
-              targetAbi: "10.11.0.0",
-              sourceUrl: $serverUrl,
-              checksum: $SERVER_SHA,
-              timestamp: $ts
-           }] + .)
-           |
-           .[1].versions |=
-           ([{
-              version: $version,
-              changelog: "Auto build",
-              targetAbi: "10.11.0.0",
-              sourceUrl: $webUrl,
-              checksum: $WEB_SHA,
-              timestamp: $ts
-           }] + .)
-           ' repository/manifest.json > "$tmp"
+        jq \
+          --arg version "$VERSION" \
+          --arg url_server "$URL_SERVER" \
+          --arg url_web "$URL_WEB" \
+          --arg ts "$TIMESTAMP" \
+          --arg server_sha "$SERVER_SHA" \
+          --arg web_sha "$WEB_SHA" \
+        '
+        .[0].versions |=
+        ([{
+          version: $version,
+          changelog: "Auto build",
+          targetAbi: "10.11.0.0",
+          sourceUrl: $url_server,
+          checksum: $server_sha,
+          timestamp: $ts
+        }] + .)
+        |
+        .[1].versions |=
+        ([{
+          version: $version,
+          changelog: "Auto build",
+          targetAbi: "10.11.0.0",
+          sourceUrl: $url_web,
+          checksum: $web_sha,
+          timestamp: $ts
+        }] + .)
+        ' repository/manifest.json > "$tmp"
 
         mv "$tmp" repository/manifest.json
+
 
     # ---------------- COMMIT ----------------
     - name: Commit manifest
