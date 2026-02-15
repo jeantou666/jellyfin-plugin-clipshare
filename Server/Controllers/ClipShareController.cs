@@ -6,6 +6,9 @@ using ClipShare.Models;
 using ClipShare.Services;
 using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Mvc;
+using System.Collections.Generic;
+using System.Linq;
+
 
 namespace ClipShare.Controllers
 {
