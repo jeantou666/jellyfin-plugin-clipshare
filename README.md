@@ -17,7 +17,7 @@ Create temporary public shareable clips from your Jellyfin videos.
 2. Plugins → Repositories → Add
 3. Add this repository:
 
-https://raw.githubusercontent.com/YOUR_GITHUB/jellyfin-plugin-clipshare/main/manifest.json
+https://raw.githubusercontent.com/jeantou666/jellyfin-plugin-clipshare/main/manifest.json
 
 4. Save
 5. Go to Catalog
