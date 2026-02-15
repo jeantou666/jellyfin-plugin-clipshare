@@ -14,6 +14,8 @@ namespace ClipShare.Controllers
     public class ClipShareController : ControllerBase
     {
         private static readonly ConcurrentDictionary<string, ClipInfo> Clips = new();
+        public static IEnumerable<ClipInfo> GetAllClips() => Clips.Values;
+        public static void RemoveClip(string id) => Clips.TryRemove(id, out _);
         private readonly ILibraryManager _libraryManager;
         private readonly ClipGenerator _generator = new();
 
