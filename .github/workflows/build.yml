@@ -19,7 +19,7 @@ jobs:
       with:
         fetch-depth: 0
         submodules: recursive
-        
+
     - name: Restore Jellyfin submodules
       run: git submodule update --init --recursive
 
@@ -49,7 +49,17 @@ jobs:
         cd webpkg
         zip -r ../clipshare-web.zip .
 
-    # ---------------- CREATE RELEASE ----------------
+    # ---------------- CHECKSUM ----------------
+    - name: Compute checksums
+      id: checksum
+      run: |
+        SERVER_SHA=$(sha256sum clipshare-server.zip | cut -d ' ' -f1)
+        WEB_SHA=$(sha256sum clipshare-web.zip | cut -d ' ' -f1)
+
+        echo "server=$SERVER_SHA" >> $GITHUB_OUTPUT
+        echo "web=$WEB_SHA" >> $GITHUB_OUTPUT
+
+    # ---------------- RELEASE ----------------
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
@@ -68,28 +78,35 @@ jobs:
     - name: Update repository manifest
       run: |
         VERSION=${GITHUB_REF_NAME#v}
-        URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-server.zip"
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    
+
+        SERVER_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-server.zip"
+        WEB_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-web.zip"
+
+        SERVER_SHA="${{ steps.checksum.outputs.server }}"
+        WEB_SHA="${{ steps.checksum.outputs.web }}"
+
         tmp=$(mktemp)
-    
+
         jq --arg version "$VERSION" \
-           --arg url "$URL" \
            --arg ts "$TIMESTAMP" \
+           --arg s_url "$SERVER_URL" \
+           --arg s_sha "$SERVER_SHA" \
+           --arg w_url "$WEB_URL" \
+           --arg w_sha "$WEB_SHA" \
            '
            .[0].versions |=
            ([{
               version: $version,
               changelog: "Auto build",
               targetAbi: "10.11.0.0",
-              sourceUrl: $url,
-              checksum: "",
+              sourceUrl: $s_url,
+              checksum: $s_sha,
               timestamp: $ts
            }] + .)
            ' repository/manifest.json > "$tmp"
-    
-        mv "$tmp" repository/manifest.json
 
+        mv "$tmp" repository/manifest.json
 
     # ---------------- COMMIT ----------------
     - name: Commit manifest
