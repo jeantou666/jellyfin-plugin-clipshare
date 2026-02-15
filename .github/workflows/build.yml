@@ -22,7 +22,7 @@ jobs:
           
       - name: Download Jellyfin
         run: |
-          curl -L https://repo.jellyfin.org/releases/server/linux/stable/combined/jellyfin_10.11.5_amd64.tar.gz -o jellyfin.tar.gz
+          curl -L https://repo.jellyfin.org/files/server/linux/latest-stable/amd64/jellyfin.tar.gz -o jellyfin.tar.gz
           mkdir jellyfin
           tar -xzf jellyfin.tar.gz -C jellyfin --strip-components=1
 
