@@ -103,7 +103,7 @@ jobs:
               changelog: "Auto build",
               targetAbi: "10.11.0.0",
               sourceUrl: $serverUrl,
-              checksum: $serverSha,
+              checksum: $SERVER_SHA,
               timestamp: $ts
            }] + .)
            |
@@ -113,7 +113,7 @@ jobs:
               changelog: "Auto build",
               targetAbi: "10.11.0.0",
               sourceUrl: $webUrl,
-              checksum: $webSha,
+              checksum: $WEB_SHA,
               timestamp: $ts
            }] + .)
            ' repository/manifest.json > "$tmp"
