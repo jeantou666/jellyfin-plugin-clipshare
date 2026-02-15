@@ -20,7 +20,7 @@ jobs:
         fetch-depth: 0
         submodules: recursive
 
-    - name: Restore Jellyfin submodules
+    - name: Ensure submodules
       run: git submodule update --init --recursive
 
     # ---------------- DOTNET ----------------
@@ -49,23 +49,34 @@ jobs:
         cd webpkg
         zip -r ../clipshare-web.zip .
 
-    # ---------------- CHECKSUM ----------------
-    - name: Compute checksums
-      id: checksum
-      run: |
-        SERVER_SHA=$(sha256sum clipshare-server.zip | cut -d ' ' -f1)
-        WEB_SHA=$(sha256sum clipshare-web.zip | cut -d ' ' -f1)
-
-        echo "server=$SERVER_SHA" >> $GITHUB_OUTPUT
-        echo "web=$WEB_SHA" >> $GITHUB_OUTPUT
-
-    # ---------------- RELEASE ----------------
+    # ---------------- CREATE RELEASE ----------------
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
           clipshare-server.zip
           clipshare-web.zip
+
+    # ---------------- WAIT CDN ----------------
+    - name: Wait GitHub CDN propagation
+      run: sleep 25
+
+    # ---------------- DOWNLOAD FILES TO COMPUTE REAL CHECKSUM ----------------
+    - name: Download release artifacts to compute checksum
+      run: |
+        VERSION=${GITHUB_REF_NAME}
+
+        SERVER_URL="https://github.com/${{ github.repository }}/releases/download/${VERSION}/clipshare-server.zip"
+        WEB_URL="https://github.com/${{ github.repository }}/releases/download/${VERSION}/clipshare-web.zip"
+
+        curl -L "$SERVER_URL" -o server.zip
+        curl -L "$WEB_URL" -o web.zip
+
+        SERVER_SHA=$(sha256sum server.zip | cut -d ' ' -f1)
+        WEB_SHA=$(sha256sum web.zip | cut -d ' ' -f1)
+
+        echo "SERVER_SHA=$SERVER_SHA" >> $GITHUB_ENV
+        echo "WEB_SHA=$WEB_SHA" >> $GITHUB_ENV
 
     # ---------------- SWITCH TO MAIN ----------------
     - name: Switch to main branch
@@ -78,30 +89,36 @@ jobs:
     - name: Update repository manifest
       run: |
         VERSION=${GITHUB_REF_NAME#v}
-        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
         SERVER_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-server.zip"
         WEB_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-web.zip"
-
-        SERVER_SHA="${{ steps.checksum.outputs.server }}"
-        WEB_SHA="${{ steps.checksum.outputs.web }}"
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
         tmp=$(mktemp)
 
         jq --arg version "$VERSION" \
+           --arg serverUrl "$SERVER_URL" \
+           --arg webUrl "$WEB_URL" \
+           --arg serverSha "$SERVER_SHA" \
+           --arg webSha "$WEB_SHA" \
            --arg ts "$TIMESTAMP" \
-           --arg s_url "$SERVER_URL" \
-           --arg s_sha "$SERVER_SHA" \
-           --arg w_url "$WEB_URL" \
-           --arg w_sha "$WEB_SHA" \
            '
            .[0].versions |=
            ([{
               version: $version,
               changelog: "Auto build",
               targetAbi: "10.11.0.0",
-              sourceUrl: $s_url,
-              checksum: $s_sha,
+              sourceUrl: $serverUrl,
+              checksum: $serverSha,
+              timestamp: $ts
+           }] + .)
+           |
+           .[1].versions |=
+           ([{
+              version: $version,
+              changelog: "Auto build",
+              targetAbi: "10.11.0.0",
+              sourceUrl: $webUrl,
+              checksum: $webSha,
               timestamp: $ts
            }] + .)
            ' repository/manifest.json > "$tmp"
