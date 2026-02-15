@@ -3,6 +3,9 @@ using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
 using MediaBrowser.Model.Plugins;
 using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
+using System.Linq;
+
 
 namespace ClipShare
 {
