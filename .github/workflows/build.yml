@@ -26,8 +26,8 @@ jobs:
           mkdir jellyfin
           tar -xzf jellyfin.tar.gz -C jellyfin --strip-components=1
 
-      - name: Restore
-        run: dotnet restore Server/ClipShare.csproj
+      - name: Build
+        run: dotnet build Server/ClipShare.csproj -c Release
 
       - name: Publish
         run: dotnet publish Server/ClipShare.csproj -c Release -o publish
