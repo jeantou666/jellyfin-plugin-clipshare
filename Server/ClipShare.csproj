@@ -8,7 +8,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Jellyfin.Plugin.Sdk" Version="10.11.5" />
+    <Reference Include="MediaBrowser.Common">
+      <HintPath>../jellyfin/lib/MediaBrowser.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="MediaBrowser.Controller">
+      <HintPath>../jellyfin/lib/MediaBrowser.Controller.dll</HintPath>
+    </Reference>
+    <Reference Include="MediaBrowser.Model">
+      <HintPath>../jellyfin/lib/MediaBrowser.Model.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>
