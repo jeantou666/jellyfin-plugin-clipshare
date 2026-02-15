@@ -1,21 +1,18 @@
-<ItemGroup>
-  <EmbeddedResource Include="..\Web\clipshare.js" Link="Web\clipshare.js" />
-</ItemGroup>
-
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Jellyfin.Controller" Version="10.9.0" />
-    <PackageReference Include="Jellyfin.Model" Version="10.9.0" />
-    <PackageReference Include="MediaBrowser.Common" Version="10.9.0" />
-    <PackageReference Include="MediaBrowser.Controller" Version="10.9.0" />
-    <PackageReference Include="MediaBrowser.Model" Version="10.9.0" />
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.5" />
+    <PackageReference Include="Jellyfin.Model" Version="10.11.5" />
+    <PackageReference Include="MediaBrowser.Common" Version="10.11.5" />
+    <PackageReference Include="MediaBrowser.Controller" Version="10.11.5" />
+    <PackageReference Include="MediaBrowser.Model" Version="10.11.5" />
   </ItemGroup>
 
 </Project>
