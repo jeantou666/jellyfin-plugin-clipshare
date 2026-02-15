@@ -1,93 +1,58 @@
-name: Build ClipShare Plugin
+name: Build & Release Jellyfin Plugin
 
 on:
   push:
     tags:
-      - "v*"
-
-permissions:
-  contents: write
+      - 'v*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout repo + submodules (OBLIGATOIRE pour Jellyfin API)
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           submodules: recursive
 
-      # .NET
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: '8.0.x'
 
-      # Restore & Build
-      - name: Restore
-        run: dotnet restore Server/ClipShare.csproj
-
-      - name: Publish
+      # ---------------- SERVER BUILD ----------------
+      - name: Build server plugin
         run: dotnet publish Server/ClipShare.csproj -c Release -o publish
 
-      # Create ZIP
-      - name: Create zip
+      - name: Prepare server package
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          cd publish
-          zip -r ../clipshare_${VERSION}.zip .
+          mkdir serverpkg
+          cp publish/ClipShare.dll serverpkg/
+          cp Server/manifest.json serverpkg/
 
-      # MD5 checksum
-      - name: Compute MD5
-        id: md5
+      - name: Zip server
         run: |
-          echo "value=$(md5sum clipshare_*.zip | cut -d ' ' -f1)" >> $GITHUB_OUTPUT
+          cd serverpkg
+          zip -r ../clipshare-server-${GITHUB_REF_NAME}.zip *
 
-      # Create GitHub Release
+      # ---------------- WEB BUILD ----------------
+      - name: Prepare web package
+        run: |
+          mkdir webpkg
+          cp ClipShare.Web/module.js webpkg/
+          cp ClipShare.Web/manifest.json webpkg/
+
+      - name: Zip web
+        run: |
+          cd webpkg
+          zip -r ../clipshare-web-${GITHUB_REF_NAME}.zip *
+
+      # ---------------- RELEASE ----------------
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: clipshare_*.zip
-
-      # Update manifest.json
-      - name: Update manifest
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare_${VERSION}.zip"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          MD5=${{ steps.md5.outputs.value }}
-
-          jq --arg v "$VERSION" \
-             --arg url "$URL" \
-             --arg md5 "$MD5" \
-             --arg date "$DATE" \
-             '
-             .[0].versions |= (
-               [{
-                 version:$v,
-                 changelog:"Auto build",
-                 targetAbi:"10.11.0.0",
-                 sourceUrl:$url,
-                 checksum:$md5,
-                 timestamp:$date
-               }] + .
-             )
-             ' repository/manifest.json > repository/manifest.tmp
-
-          mv repository/manifest.tmp repository/manifest.json
-
-      # Commit manifest back to main
-      - name: Commit manifest
-        run: |
-          git config user.name github-actions
-          git config user.email actions@github.com
-
-          git fetch origin main
-          git checkout main
-
-          git add repository/manifest.json
-          git commit -m "Add version ${GITHUB_REF_NAME}" || exit 0
-          git push origin main
+          files: |
+            clipshare-server-${{ github.ref_name }}.zip
+            clipshare-web-${{ github.ref_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
