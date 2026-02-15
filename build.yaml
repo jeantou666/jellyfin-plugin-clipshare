@@ -1,9 +1,8 @@
-name: Build Plugin
+name: Release Plugin
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -15,10 +14,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: 7.0.x
-
-      - name: Restore
-        run: dotnet restore Server/ClipShare.csproj
+          dotnet-version: 8.0.x
 
       - name: Publish
         run: dotnet publish Server/ClipShare.csproj -c Release -o publish
@@ -28,7 +24,38 @@ jobs:
           cd publish
           zip -r ../clipshare.zip .
 
-      - name: Release
+      - name: Compute MD5
+        run: md5sum clipshare.zip | cut -d ' ' -f1 > checksum.txt
+
+      - name: Update manifest
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          CHECKSUM=$(cat checksum.txt)
+          URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare.zip"
+
+          jq --arg version "$VERSION" \
+             --arg checksum "$CHECKSUM" \
+             --arg url "$URL" \
+             '.[] .versions |= ([{
+                version: $version,
+                changelog: "Auto release",
+                targetAbi: "10.11.0.0",
+                sourceUrl: $url,
+                checksum: $checksum,
+                timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
+             }] + .)' manifest.json > manifest_tmp.json
+
+          mv manifest_tmp.json manifest.json
+
+      - name: Commit manifest
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add manifest.json
+          git commit -m "Add version ${GITHUB_REF_NAME}"
+          git push
+
+      - name: Upload asset
         uses: softprops/action-gh-release@v1
         with:
           files: clipshare.zip
