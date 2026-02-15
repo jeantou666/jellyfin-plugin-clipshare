@@ -1,61 +1,37 @@
-name: Release Plugin
+name: Build and Release Plugin
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore Server/ClipShare.csproj
 
       - name: Publish
         run: dotnet publish Server/ClipShare.csproj -c Release -o publish
 
-      - name: Zip
+      - name: Zip plugin
         run: |
           cd publish
           zip -r ../clipshare.zip .
 
-      - name: Compute MD5
-        run: md5sum clipshare.zip | cut -d ' ' -f1 > checksum.txt
-
-      - name: Update manifest
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          CHECKSUM=$(cat checksum.txt)
-          URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare.zip"
-
-          jq --arg version "$VERSION" \
-             --arg checksum "$CHECKSUM" \
-             --arg url "$URL" \
-             '.[] .versions |= ([{
-                version: $version,
-                changelog: "Auto release",
-                targetAbi: "10.11.0.0",
-                sourceUrl: $url,
-                checksum: $checksum,
-                timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))
-             }] + .)' manifest.json > manifest_tmp.json
-
-          mv manifest_tmp.json manifest.json
-
-      - name: Commit manifest
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add manifest.json
-          git commit -m "Add version ${GITHUB_REF_NAME}"
-          git push
-
-      - name: Upload asset
-        uses: softprops/action-gh-release@v1
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
         with:
           files: clipshare.zip
