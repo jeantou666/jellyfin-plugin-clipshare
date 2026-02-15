@@ -1,3 +1,7 @@
+<ItemGroup>
+  <EmbeddedResource Include="..\Web\clipshare.js" Link="Web\clipshare.js" />
+</ItemGroup>
+
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
