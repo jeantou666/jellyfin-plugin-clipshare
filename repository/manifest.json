@@ -7,6 +7,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.6",
+        "changelog": "Auto build",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v1.2.6/clipshare-server.zip",
+        "checksum": "0f5a45e1d045a6613e3fc1815fd7227e7a8a2c96b9b50cf6c75ac5e419ca0320",
+        "timestamp": "2026-02-15T22:14:01Z"
+      },
+      {
         "version": "1.2.5",
         "changelog": "Auto build",
         "targetAbi": "10.11.0.0",
@@ -39,6 +47,14 @@
     "owner": "jeantou666",
     "category": "General",
     "versions": [
+      {
+        "version": "1.2.6",
+        "changelog": "Auto build",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v1.2.6/clipshare-web.zip",
+        "checksum": "e53047fbd1ca9f32bbc893623a1aad62d132c4af489d912af2897b1096469806",
+        "timestamp": "2026-02-15T22:14:01Z"
+      },
       {
         "version": "1.2.5",
         "changelog": "Auto build",
