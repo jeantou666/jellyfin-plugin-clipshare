@@ -1,55 +1,99 @@
-permissions:
-  contents: write
-
-name: Build & Release Jellyfin Plugin
+name: Build & Publish Jellyfin Plugin
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    # ---------------- CHECKOUT ----------------
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
+    # ---------------- DOTNET ----------------
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
 
-      # ---------------- SERVER BUILD ----------------
-      - name: Build server plugin
-        run: dotnet publish Server/ClipShare.csproj -c Release -o publish
+    # ---------------- BUILD SERVER ----------------
+    - name: Publish plugin
+      run: dotnet publish Server/ClipShare.csproj -c Release -o publish
 
-      - name: Zip server plugin
-        run: |
-          cd publish
-          zip -r ../clipshare-server-${GITHUB_REF_NAME}.zip *
+    # ---------------- PACKAGE SERVER ----------------
+    - name: Create server package
+      run: |
+        mkdir serverpkg
+        cp -r publish/* serverpkg/
+        cd serverpkg
+        zip -r ../clipshare-server.zip .
 
-      # ---------------- WEB BUILD ----------------
-      - name: Prepare web package
-        run: |
-          mkdir webpkg
-          cp ClipShare.Web/module.js webpkg/
-          cp ClipShare.Web/manifest.json webpkg/
+    # ---------------- PACKAGE WEB ----------------
+    - name: Create web package
+      run: |
+        mkdir webpkg
+        cp -r Web/* webpkg/
+        cd webpkg
+        zip -r ../clipshare-web.zip .
 
-      - name: Zip web
-        run: |
-          cd webpkg
-          zip -r ../clipshare-web-${GITHUB_REF_NAME}.zip *
+    # ---------------- CREATE RELEASE ----------------
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          clipshare-server.zip
+          clipshare-web.zip
 
-      # ---------------- RELEASE ----------------
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            clipshare-server-${{ github.ref_name }}.zip
-            clipshare-web-${{ github.ref_name }}.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # ---------------- SWITCH TO MAIN ----------------
+    - name: Switch to main branch
+      run: |
+        git fetch origin main
+        git checkout main
+        git pull origin main
+
+    # ---------------- UPDATE MANIFEST ----------------
+    - name: Update repository manifest
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
+        DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        SERVER_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION/clipshare-server.zip"
+        WEB_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION/clipshare-web.zip"
+
+        SERVER_MD5=$(md5sum clipshare-server.zip | awk '{ print $1 }')
+        WEB_MD5=$(md5sum clipshare-web.zip | awk '{ print $1 }')
+
+        jq --arg version "$VERSION" \
+           --arg date "$DATE" \
+           --arg s_url "$SERVER_URL" \
+           --arg s_md5 "$SERVER_MD5" \
+           --arg w_url "$WEB_URL" \
+           --arg w_md5 "$WEB_MD5" \
+        '.plugins[0].versions |=
+        ([{
+            version:$version,
+            targetAbi:"10.11.0.0",
+            sourceUrl:$s_url,
+            checksum:$s_md5,
+            timestamp:$date
+        }] + .)' repository/manifest.json > tmp.json
+
+        mv tmp.json repository/manifest.json
+
+    # ---------------- COMMIT ----------------
+    - name: Commit manifest
+      run: |
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
+        git add repository/manifest.json
+        git commit -m "Add version v${GITHUB_REF_NAME#v}" || echo "No change"
+        git push origin main
