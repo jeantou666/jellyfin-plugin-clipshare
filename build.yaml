@@ -1,0 +1,34 @@
+name: Build Plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 7.0.x
+
+      - name: Restore
+        run: dotnet restore Server/ClipShare.csproj
+
+      - name: Publish
+        run: dotnet publish Server/ClipShare.csproj -c Release -o publish
+
+      - name: Zip
+        run: |
+          cd publish
+          zip -r ../clipshare.zip .
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: clipshare.zip
