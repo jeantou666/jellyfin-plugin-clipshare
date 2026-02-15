@@ -24,8 +24,16 @@ namespace ClipShare
 
         public IEnumerable<PluginPageInfo> GetPages()
         {
-            return Array.Empty<PluginPageInfo>();
+            return new[]
+            {
+                new PluginPageInfo
+                {
+                    Name = "clipshare",
+                    EmbeddedResourcePath = GetType().Namespace + ".Web.clipshare.js"
+                }
+            };
         }
+
     }
 
     public class PluginConfiguration : BasePluginConfiguration
