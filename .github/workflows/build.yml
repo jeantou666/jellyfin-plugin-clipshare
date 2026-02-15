@@ -3,33 +3,72 @@ name: Build Plugin
 on:
   push:
     tags:
-      - 'v*'
-
-permissions:
-  contents: write
+      - "v*"
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.0.x
 
-      - name: Build
-        run: dotnet publish Server/ClipShare.csproj -c Release -o publish
+    - name: Restore
+      run: dotnet restore Server/ClipShare.csproj
 
-      - name: Zip
-        run: |
-          cd publish
-          zip -r ../clipshare.zip .
+    - name: Publish
+      run: dotnet publish Server/ClipShare.csproj -c Release -o publish
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: clipshare.zip
+    - name: Create zip
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
+        cd publish
+        zip -r ../clipshare_${VERSION}.zip .
+
+    - name: MD5
+      id: hash
+      run: |
+        echo "md5=$(md5sum clipshare_*.zip | cut -d ' ' -f1)" >> $GITHUB_OUTPUT
+
+    - name: Update manifest
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
+        URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare_${VERSION}.zip"
+        DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        jq --arg v "$VERSION" \
+           --arg url "$URL" \
+           --arg md5 "${{ steps.hash.outputs.md5 }}" \
+           --arg date "$DATE" \
+        '. [0].versions |= ([{
+            version:$v,
+            changelog:"Auto build",
+            targetAbi:"10.11.0.0",
+            sourceUrl:$url,
+            checksum:$md5,
+            timestamp:$date
+        }] + .)' repository/manifest.json > tmp.json
+
+        mv tmp.json repository/manifest.json
+
+    - name: Commit manifest
+      run: |
+        git config user.name github-actions
+        git config user.email actions@github.com
+        git add repository/manifest.json
+        git commit -m "Add version ${GITHUB_REF_NAME}" || exit 0
+        git push
+
+    - name: Create release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: clipshare_*.zip
