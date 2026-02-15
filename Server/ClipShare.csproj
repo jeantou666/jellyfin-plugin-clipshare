@@ -1,8 +1,14 @@
-<Project Sdk="Jellyfin.Sdk/10.11.5">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../jellyfin/MediaBrowser.Common/MediaBrowser.Common.csproj" />
+    <ProjectReference Include="../jellyfin/MediaBrowser.Controller/MediaBrowser.Controller.csproj" />
+    <ProjectReference Include="../jellyfin/MediaBrowser.Model/MediaBrowser.Model.csproj" />
+  </ItemGroup>
 
 </Project>
