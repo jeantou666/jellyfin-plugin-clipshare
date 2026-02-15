@@ -19,10 +19,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-          
-      - name: Configure NuGet auth
-        run: |
-          sed -i 's/%GITHUB_TOKEN%/${{ secrets.GITHUB_TOKEN }}/g' nuget.config
 
       - name: Restore
         run: dotnet restore Server/ClipShare.csproj
