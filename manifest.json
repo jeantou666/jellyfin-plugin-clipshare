@@ -1,6 +1,6 @@
 [
   {
-    "guid": "d9c4e7f4-6a5c-4c6b-9c1f-clipshare0001",
+    "guid": "7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21",
     "name": "ClipShare",
     "description": "Create temporary public shareable video clips from Jellyfin",
     "overview": "Generate a public temporary clip link directly from the video player.",
