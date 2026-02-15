@@ -68,30 +68,28 @@ jobs:
     - name: Update repository manifest
       run: |
         VERSION=${GITHUB_REF_NAME#v}
-        DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-        SERVER_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION/clipshare-server.zip"
-        WEB_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION/clipshare-web.zip"
-
-        SERVER_MD5=$(md5sum clipshare-server.zip | awk '{ print $1 }')
-        WEB_MD5=$(md5sum clipshare-web.zip | awk '{ print $1 }')
-
+        URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-server.zip"
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+        tmp=$(mktemp)
+    
         jq --arg version "$VERSION" \
-           --arg date "$DATE" \
-           --arg s_url "$SERVER_URL" \
-           --arg s_md5 "$SERVER_MD5" \
-           --arg w_url "$WEB_URL" \
-           --arg w_md5 "$WEB_MD5" \
-        '.plugins[0].versions |=
-        ([{
-            version:$version,
-            targetAbi:"10.11.0.0",
-            sourceUrl:$s_url,
-            checksum:$s_md5,
-            timestamp:$date
-        }] + .)' repository/manifest.json > tmp.json
+           --arg url "$URL" \
+           --arg ts "$TIMESTAMP" \
+           '
+           .[0].versions |=
+           ([{
+              version: $version,
+              changelog: "Auto build",
+              targetAbi: "10.11.0.0",
+              sourceUrl: $url,
+              checksum: "",
+              timestamp: $ts
+           }] + .)
+           ' repository/manifest.json > "$tmp"
+    
+        mv "$tmp" repository/manifest.json
 
-        mv tmp.json repository/manifest.json
 
     # ---------------- COMMIT ----------------
     - name: Commit manifest
