@@ -14,21 +14,22 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
-      - name: Publish Plugin
+      - name: Build
         run: dotnet publish Server/ClipShare.csproj -c Release -o publish
 
-      - name: Zip plugin
+      - name: Zip
         run: |
           cd publish
           zip -r ../clipshare.zip .
 
-      - name: Create Release
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: clipshare.zip
