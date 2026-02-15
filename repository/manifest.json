@@ -7,6 +7,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.5",
+        "changelog": "Auto build",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v1.2.5/clipshare-server.zip",
+        "checksum": "da4d5ceeb55dd4e23c7519a53420a2c6843d461a45f1add105cfdc3f594197cf",
+        "timestamp": "2026-02-15T21:52:09Z"
+      },
+      {
         "version": "1.2.4",
         "changelog": "Auto build",
         "targetAbi": "10.11.0.0",
@@ -30,6 +38,15 @@
     "description": "Adds clip button in the video player",
     "owner": "jeantou666",
     "category": "General",
-    "versions": []
+    "versions": [
+      {
+        "version": "1.2.5",
+        "changelog": "Auto build",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v1.2.5/clipshare-web.zip",
+        "checksum": "6fa27c7f891779ab55e5241ee0adf5b40fe34195338796d7721baa902e807529",
+        "timestamp": "2026-02-15T21:52:09Z"
+      }
+    ]
   }
 ]
