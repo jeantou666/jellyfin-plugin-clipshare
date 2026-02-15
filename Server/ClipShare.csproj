@@ -9,6 +9,7 @@
     <ProjectReference Include="../jellyfin/MediaBrowser.Common/MediaBrowser.Common.csproj" />
     <ProjectReference Include="../jellyfin/MediaBrowser.Controller/MediaBrowser.Controller.csproj" />
     <ProjectReference Include="../jellyfin/MediaBrowser.Model/MediaBrowser.Model.csproj" />
+    <EmbeddedResource Include="Web\**\*" />
   </ItemGroup>
 
 </Project>
