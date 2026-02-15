@@ -1,99 +1,20 @@
-name: Build & Publish Jellyfin Plugin
-
-on:
-  push:
-    tags:
-      - "v*"
-
-permissions:
-  contents: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    # ---------------- CHECKOUT ----------------
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    # ---------------- DOTNET ----------------
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
-
-    # ---------------- BUILD SERVER ----------------
-    - name: Publish plugin
-      run: dotnet publish Server/ClipShare.csproj -c Release -o publish
-
-    # ---------------- PACKAGE SERVER ----------------
-    - name: Create server package
-      run: |
-        mkdir serverpkg
-        cp -r publish/* serverpkg/
-        cd serverpkg
-        zip -r ../clipshare-server.zip .
-
-    # ---------------- PACKAGE WEB ----------------
-    - name: Create web package
-      run: |
-        mkdir webpkg
-        cp -r Web/* webpkg/
-        cd webpkg
-        zip -r ../clipshare-web.zip .
-
-    # ---------------- CREATE RELEASE ----------------
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          clipshare-server.zip
-          clipshare-web.zip
-
-    # ---------------- SWITCH TO MAIN ----------------
-    - name: Switch to main branch
-      run: |
-        git fetch origin main
-        git checkout main
-        git pull origin main
-
-    # ---------------- UPDATE MANIFEST ----------------
-    - name: Update repository manifest
-      run: |
-        VERSION=${GITHUB_REF_NAME#v}
-        DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-        SERVER_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION/clipshare-server.zip"
-        WEB_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION/clipshare-web.zip"
-
-        SERVER_MD5=$(md5sum clipshare-server.zip | awk '{ print $1 }')
-        WEB_MD5=$(md5sum clipshare-web.zip | awk '{ print $1 }')
-
-        jq --arg version "$VERSION" \
-           --arg date "$DATE" \
-           --arg s_url "$SERVER_URL" \
-           --arg s_md5 "$SERVER_MD5" \
-           --arg w_url "$WEB_URL" \
-           --arg w_md5 "$WEB_MD5" \
-        '.plugins[0].versions |=
-        ([{
-            version:$version,
-            targetAbi:"10.11.0.0",
-            sourceUrl:$s_url,
-            checksum:$s_md5,
-            timestamp:$date
-        }] + .)' repository/manifest.json > tmp.json
-
-        mv tmp.json repository/manifest.json
-
-    # ---------------- COMMIT ----------------
-    - name: Commit manifest
-      run: |
-        git config user.name "github-actions"
-        git config user.email "actions@github.com"
-        git add repository/manifest.json
-        git commit -m "Add version v${GITHUB_REF_NAME#v}" || echo "No change"
-        git push origin main
+[
+  {
+    "guid": "6b7f9c9e-6a16-4a1d-9c1c-4f5e6e3b52aa",
+    "name": "ClipShare",
+    "description": "Create clips from the video player",
+    "owner": "jeantou666",
+    "category": "General",
+    "versions": [
+    ]
+  },
+  {
+    "guid": "91d6d5c1-7c42-4b73-9c3b-4db7d1f3e221",
+    "name": "ClipShare Web UI",
+    "description": "Adds clip button in the video player",
+    "owner": "jeantou666",
+    "category": "General",
+    "versions": [
+    ]
+  }
+]
