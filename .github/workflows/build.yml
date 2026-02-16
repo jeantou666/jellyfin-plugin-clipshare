@@ -60,15 +60,25 @@ jobs:
     - name: Wait GitHub CDN
       run: sleep 20
 
-    - name: Download release artifacts and compute checksum
+    - name: Get real asset URLs + checksum
       run: |
         VERSION=${GITHUB_REF_NAME}
     
-        curl -L -o server.zip https://github.com/${{ github.repository }}/releases/download/${VERSION}/clipshare-server.zip
-        curl -L -o web.zip https://github.com/${{ github.repository }}/releases/download/${VERSION}/clipshare-web.zip
+        API="https://api.github.com/repos/${{ github.repository }}/releases/tags/${VERSION}"
+        curl -s $API > release.json
+    
+        SERVER_URL=$(jq -r '.assets[] | select(.name=="clipshare-server.zip") | .browser_download_url' release.json)
+        WEB_URL=$(jq -r '.assets[] | select(.name=="clipshare-web.zip") | .browser_download_url' release.json)
+    
+        echo "SERVER_URL=$SERVER_URL" >> $GITHUB_ENV
+        echo "WEB_URL=$WEB_URL" >> $GITHUB_ENV
+    
+        curl -L -o server.zip "$SERVER_URL"
+        curl -L -o web.zip "$WEB_URL"
     
         sha256sum server.zip | cut -d ' ' -f1 > server.sha
         sha256sum web.zip | cut -d ' ' -f1 > web.sha
+
 
 
     # ---------------- SWITCH TO MAIN ----------------
@@ -85,8 +95,9 @@ jobs:
         WEB_SHA=$(cat web.sha)
 
         VERSION=${GITHUB_REF_NAME#v}
-        URL_SERVER="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-server.zip"
-        URL_WEB="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-web.zip"
+        URL_SERVER="$SERVER_URL"
+        URL_WEB="$WEB_URL"
+
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
         tmp=$(mktemp)
