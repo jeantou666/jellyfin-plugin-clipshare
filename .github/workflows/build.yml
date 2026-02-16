@@ -142,3 +142,4 @@ jobs:
         git add repository/manifest.json
         git commit -m "Add version v${GITHUB_REF_NAME#v}" || echo "No change"
         git push origin main
+
