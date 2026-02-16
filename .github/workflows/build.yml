@@ -44,8 +44,8 @@ jobs:
     # ---------------- PACKAGE WEB ----------------
     - name: Create web package
       run: |
-        mkdir webpkg
-        cp -r Web/* webpkg/
+        mkdir -p webpkg/web
+        cp -r Web/* webpkg/web/
         cd webpkg
         zip -r ../clipshare-web.zip .
 
