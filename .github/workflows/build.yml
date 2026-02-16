@@ -60,18 +60,16 @@ jobs:
     - name: Wait GitHub CDN
       run: sleep 20
 
-    - name: Download release artifacts (REAL files)
+    - name: Download release artifacts and compute checksum
       run: |
         VERSION=${GITHUB_REF_NAME}
-
+    
         curl -L -o server.zip https://github.com/${{ github.repository }}/releases/download/${VERSION}/clipshare-server.zip
         curl -L -o web.zip https://github.com/${{ github.repository }}/releases/download/${VERSION}/clipshare-web.zip
+    
+        sha256sum server.zip | cut -d ' ' -f1 > server.sha
+        sha256sum web.zip | cut -d ' ' -f1 > web.sha
 
-        SERVER_SHA=$(sha256sum server.zip | cut -d ' ' -f1)
-        WEB_SHA=$(sha256sum web.zip | cut -d ' ' -f1)
-
-        echo "SERVER_SHA=$SERVER_SHA" >> $GITHUB_ENV
-        echo "WEB_SHA=$WEB_SHA" >> $GITHUB_ENV
 
     # ---------------- SWITCH TO MAIN ----------------
     - name: Switch to main branch
@@ -83,6 +81,9 @@ jobs:
     # ---------------- UPDATE MANIFEST ----------------
     - name: Update repository manifest
       run: |
+        SERVER_SHA=$(cat server.sha)
+        WEB_SHA=$(cat web.sha)
+
         VERSION=${GITHUB_REF_NAME#v}
         URL_SERVER="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-server.zip"
         URL_WEB="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/clipshare-web.zip"
