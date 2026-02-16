@@ -76,8 +76,9 @@ jobs:
         curl -L -o server.zip "$SERVER_URL"
         curl -L -o web.zip "$WEB_URL"
     
-        sha256sum server.zip | cut -d ' ' -f1 > server.sha
-        sha256sum web.zip | cut -d ' ' -f1 > web.sha
+        # Jellyfin requires MD5 in UPPERCASE
+        md5sum server.zip | awk '{print toupper($1)}' > server.sha
+        md5sum web.zip | awk '{print toupper($1)}' > web.sha
 
 
 
@@ -142,4 +143,3 @@ jobs:
         git add repository/manifest.json
         git commit -m "Add version v${GITHUB_REF_NAME#v}" || echo "No change"
         git push origin main
-
