@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using ClipShare.Models;
@@ -174,7 +175,7 @@ namespace ClipShare.Controllers
 
             DebugLog($"GenerateClip: input={input}");
             DebugLog($"GenerateClip: output={output}");
-            DebugLog($"GenerateClip: start={start}, duration={duration}");
+            DebugLog($"GenerateClip: start={start.ToString("F2", CultureInfo.InvariantCulture)}, duration={duration.ToString("F2", CultureInfo.InvariantCulture)}");
             logger?.LogInformation("[ClipShare] Input path: {Input}", input);
             logger?.LogInformation("[ClipShare] Output path: {Output}", output);
 
@@ -190,11 +191,12 @@ namespace ClipShare.Controllers
             };
 
             // Build arguments using ArgumentList (avoids quoting issues)
+            // Use InvariantCulture for decimal separator (point instead of comma)
             startInfo.ArgumentList.Add("-y");
             startInfo.ArgumentList.Add("-ss");
-            startInfo.ArgumentList.Add(start.ToString("F2"));
+            startInfo.ArgumentList.Add(start.ToString("F2", CultureInfo.InvariantCulture));
             startInfo.ArgumentList.Add("-t");
-            startInfo.ArgumentList.Add(duration.ToString("F2"));
+            startInfo.ArgumentList.Add(duration.ToString("F2", CultureInfo.InvariantCulture));
             startInfo.ArgumentList.Add("-i");
             startInfo.ArgumentList.Add(input);
             startInfo.ArgumentList.Add("-c");
@@ -204,7 +206,7 @@ namespace ClipShare.Controllers
             startInfo.ArgumentList.Add(output);
 
             // Log the full command for debugging
-            var argsDisplay = $"-y -ss {start:F2} -t {duration:F2} -i \"{input}\" -c copy -avoid_negative_ts make_zero \"{output}\"";
+            var argsDisplay = $"-y -ss {start.ToString("F2", CultureInfo.InvariantCulture)} -t {duration.ToString("F2", CultureInfo.InvariantCulture)} -i \"{input}\" -c copy -avoid_negative_ts make_zero \"{output}\"";
             DebugLog($"FFmpeg command: {ffmpegPath} {argsDisplay}");
             logger?.LogInformation("[ClipShare] Running: {Ffmpeg} {Args}", ffmpegPath, argsDisplay);
 
