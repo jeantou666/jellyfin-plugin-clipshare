@@ -31,6 +31,42 @@
     };
 
     /**
+     * Get API key from localStorage
+     */
+    function getApiKey() {
+        try {
+            // Method 1: From jellyfin_credentials in localStorage
+            const credentials = localStorage.getItem('jellyfin_credentials');
+            if (credentials) {
+                const parsed = JSON.parse(credentials);
+                if (parsed.Servers && parsed.Servers.length > 0) {
+                    const token = parsed.Servers[0].AccessToken;
+                    if (token) {
+                        console.log('[ClipShare] Got API key from credentials');
+                        return token;
+                    }
+                }
+            }
+
+            // Method 2: From ApiClient
+            if (window.ApiClient) {
+                if (window.ApiClient.accessToken) return window.ApiClient.accessToken;
+                if (window.ApiClient._serverInfo?.AccessToken) return window.ApiClient._serverInfo.AccessToken;
+            }
+
+            // Method 3: From URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlToken = urlParams.get('api_key');
+            if (urlToken) return urlToken;
+
+        } catch (e) {
+            console.error('[ClipShare] Error getting API key:', e);
+        }
+
+        return null;
+    }
+
+    /**
      * Get video ID from loaded resources (performance API)
      */
     function getVideoId() {
@@ -60,34 +96,14 @@
      */
     async function fetchMediaPath(itemId) {
         try {
-            // Try to get API key from various sources
-            let apiKey = null;
-
-            // Method 1: From ApiClient
-            if (window.ApiClient) {
-                apiKey = window.ApiClient.accessToken || window.ApiClient._serverInfo?.AccessToken;
-            }
-
-            // Method 2: From URL parameters
+            const apiKey = getApiKey();
             if (!apiKey) {
-                const urlParams = new URLSearchParams(window.location.search);
-                apiKey = urlParams.get('api_key');
-            }
-
-            // Method 3: From localStorage
-            if (!apiKey) {
-                try {
-                    const serverInfo = JSON.parse(localStorage.getItem('jellyfin_credentials') || '{}');
-                    apiKey = serverInfo.Servers?.[0]?.AccessToken;
-                } catch (e) {}
-            }
-
-            if (!apiKey) {
-                console.warn('[ClipShare] No API key found');
+                console.error('[ClipShare] No API key found');
                 return null;
             }
 
-            // Fetch item info from Jellyfin API
+            console.log('[ClipShare] Fetching media path for:', itemId);
+
             const response = await fetch(`/Items?Ids=${itemId}&Fields=Path`, {
                 headers: {
                     'X-Emby-Token': apiKey
@@ -95,14 +111,15 @@
             });
 
             if (!response.ok) {
-                console.warn('[ClipShare] Failed to fetch item info:', response.status);
+                console.error('[ClipShare] Failed to fetch item info:', response.status);
                 return null;
             }
 
             const data = await response.json();
+            console.log('[ClipShare] API response:', data);
 
             if (data.Items && data.Items.length > 0 && data.Items[0].Path) {
-                console.log('[ClipShare] Got media path from API:', data.Items[0].Path);
+                console.log('[ClipShare] Got media path:', data.Items[0].Path);
                 return data.Items[0].Path;
             }
 
