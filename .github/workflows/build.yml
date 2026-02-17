@@ -14,14 +14,10 @@ jobs:
 
     steps:
     # ---------------- CHECKOUT ----------------
-    - name: Checkout (with submodules)
+    - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        submodules: recursive
-
-    - name: Ensure submodules
-      run: git submodule update --init --recursive
 
     # ---------------- DOTNET ----------------
     - name: Setup .NET
