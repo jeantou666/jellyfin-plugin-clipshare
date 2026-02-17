@@ -8,6 +8,7 @@ using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 
 namespace ClipShare.Controllers
@@ -74,6 +75,33 @@ namespace ClipShare.Controllers
 
             var stream = new FileStream(clip.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             return File(stream, "video/mp4", enableRangeProcessing: true);
+        }
+
+        /// <summary>
+        /// Serves the ClipShare JavaScript for injection into Jellyfin Web.
+        /// </summary>
+        [HttpGet("script")]
+        [ResponseCache(Duration = 3600)] // Cache for 1 hour
+        public IActionResult GetScript()
+        {
+            var script = GetEmbeddedScript();
+            if (string.IsNullOrEmpty(script))
+                return NotFound("// ClipShare script not found");
+
+            return Content(script, "application/javascript");
+        }
+
+        private static string GetEmbeddedScript()
+        {
+            var assembly = typeof(ClipSharePlugin).Assembly;
+            var resourceName = "ClipShare.Web.clipshare.js";
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+                return null;
+
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
         }
     }
 }
