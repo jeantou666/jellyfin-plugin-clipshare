@@ -18,11 +18,23 @@ namespace ClipShare.Controllers
         public static IEnumerable<ClipInfo> GetAllClips() => Clips.Values;
         public static void RemoveClip(string id) => Clips.TryRemove(id, out _);
 
+        // Debug log file
+        private static readonly string DebugLogFile = "/tmp/clipshare-debug.log";
+        private static void DebugLog(string message)
+        {
+            try
+            {
+                var line = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {message}\n";
+                System.IO.File.AppendAllText(DebugLogFile, line);
+            } catch { }
+        }
+
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
             var logger = HttpContext.RequestServices.GetService(typeof(ILogger<ClipShareController>)) as ILogger<ClipShareController>;
             
+            DebugLog($"Create clip request: ItemId={request.ItemId}, Start={request.StartSeconds}, End={request.EndSeconds}");
             logger?.LogInformation("[ClipShare] Create clip request: ItemId={ItemId}, Start={Start}, End={End}", 
                 request.ItemId, request.StartSeconds, request.EndSeconds);
 
@@ -31,11 +43,15 @@ namespace ClipShare.Controllers
 
             if (string.IsNullOrEmpty(mediaPath))
             {
+                DebugLog("ERROR: Media path is empty");
                 return BadRequest("Media path is required. Please refresh the page and try again.");
             }
 
+            DebugLog($"Media path: {mediaPath}");
+
             if (!System.IO.File.Exists(mediaPath))
             {
+                DebugLog($"ERROR: Media file not found: {mediaPath}");
                 logger?.LogError("[ClipShare] Media file not found: {Path}", mediaPath);
                 return NotFound($"Media file not found: {mediaPath}");
             }
@@ -44,9 +60,10 @@ namespace ClipShare.Controllers
             var folder = GetClipFolder(logger);
             var output = Path.Combine(folder, $"{id}.mp4");
 
+            DebugLog($"Output folder: {folder}");
+            DebugLog($"Output path: {output}");
             logger?.LogInformation("[ClipShare] Output path: {Output}", output);
             logger?.LogInformation("[ClipShare] Folder exists: {Exists}", Directory.Exists(folder));
-            logger?.LogInformation("[ClipShare] Folder writable: checking...");
 
             // Test write permission
             try
@@ -54,10 +71,12 @@ namespace ClipShare.Controllers
                 var testFile = Path.Combine(folder, "test.txt");
                 await System.IO.File.WriteAllTextAsync(testFile, "test");
                 System.IO.File.Delete(testFile);
+                DebugLog("Folder is writable");
                 logger?.LogInformation("[ClipShare] Folder is writable");
             }
             catch (Exception ex)
             {
+                DebugLog($"ERROR: Folder not writable: {ex.Message}");
                 logger?.LogError("[ClipShare] Folder not writable: {Error}", ex.Message);
                 return StatusCode(500, $"Output folder not writable: {ex.Message}");
             }
@@ -68,6 +87,7 @@ namespace ClipShare.Controllers
             }
             catch (Exception ex)
             {
+                DebugLog($"ERROR: Failed to generate clip: {ex.Message}");
                 logger?.LogError("[ClipShare] Failed to generate clip: {Error}", ex.Message);
                 return StatusCode(500, $"Failed to generate clip: {ex.Message}");
             }
@@ -152,6 +172,9 @@ namespace ClipShare.Controllers
             // Use Jellyfin's ffmpeg
             var ffmpegPath = "/usr/lib/jellyfin-ffmpeg/ffmpeg";
 
+            DebugLog($"GenerateClip: input={input}");
+            DebugLog($"GenerateClip: output={output}");
+            DebugLog($"GenerateClip: start={start}, duration={duration}");
             logger?.LogInformation("[ClipShare] Input path: {Input}", input);
             logger?.LogInformation("[ClipShare] Output path: {Output}", output);
 
@@ -182,6 +205,7 @@ namespace ClipShare.Controllers
 
             // Log the full command for debugging
             var argsDisplay = $"-y -ss {start:F2} -t {duration:F2} -i \"{input}\" -c copy -avoid_negative_ts make_zero \"{output}\"";
+            DebugLog($"FFmpeg command: {ffmpegPath} {argsDisplay}");
             logger?.LogInformation("[ClipShare] Running: {Ffmpeg} {Args}", ffmpegPath, argsDisplay);
 
             var process = new System.Diagnostics.Process
@@ -197,6 +221,7 @@ namespace ClipShare.Controllers
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     errorOutput.AppendLine(e.Data);
+                    DebugLog($"FFmpeg stderr: {e.Data}");
                     logger?.LogDebug("[ClipShare] FFmpeg stderr: {Line}", e.Data);
                 }
             };
@@ -206,6 +231,7 @@ namespace ClipShare.Controllers
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     standardOutput.AppendLine(e.Data);
+                    DebugLog($"FFmpeg stdout: {e.Data}");
                     logger?.LogDebug("[ClipShare] FFmpeg stdout: {Line}", e.Data);
                 }
             };
@@ -219,11 +245,15 @@ namespace ClipShare.Controllers
             var exitCode = process.ExitCode;
             var error = errorOutput.ToString();
 
+            DebugLog($"FFmpeg exit code: {exitCode}");
+            DebugLog($"FFmpeg output file exists: {System.IO.File.Exists(output)}");
             logger?.LogInformation("[ClipShare] FFmpeg exit code: {Code}", exitCode);
             logger?.LogInformation("[ClipShare] FFmpeg output file exists: {Exists}", System.IO.File.Exists(output));
 
             if (exitCode != 0)
             {
+                // Log full error output
+                DebugLog($"FFmpeg ERROR output:\n{error}");
                 // Log last 10 lines of error output
                 var errorLines = error.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(10);
                 logger?.LogError("[ClipShare] FFmpeg last error lines: {Errors}", string.Join("\n", errorLines));
@@ -232,10 +262,12 @@ namespace ClipShare.Controllers
 
             if (!System.IO.File.Exists(output))
             {
+                DebugLog("ERROR: Output file not created");
                 throw new Exception("FFmpeg completed but output file was not created");
             }
 
             var fileInfo = new FileInfo(output);
+            DebugLog($"Clip created successfully: {output}, size={fileInfo.Length} bytes");
             logger?.LogInformation("[ClipShare] Clip created: {Output}, Size: {Size} bytes", output, fileInfo.Length);
         }
     }
