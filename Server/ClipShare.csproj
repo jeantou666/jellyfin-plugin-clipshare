@@ -1,14 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <RootNamespace>ClipShare</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="../jellyfin/MediaBrowser.Common/MediaBrowser.Common.csproj" />
     <ProjectReference Include="../jellyfin/MediaBrowser.Controller/MediaBrowser.Controller.csproj" />
     <ProjectReference Include="../jellyfin/MediaBrowser.Model/MediaBrowser.Model.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Web\**\*" />
   </ItemGroup>
 
