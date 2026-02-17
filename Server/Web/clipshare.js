@@ -16,6 +16,7 @@
 
     // State
     let currentItemId = null;
+    let currentMediaPath = null;
     let startTime = null;
     let endTime = null;
     let isSelecting = false;
@@ -33,10 +34,8 @@
      * Get video ID from loaded resources (performance API)
      */
     function getVideoId() {
-        // Check cached value first
         if (currentItemId) return currentItemId;
 
-        // Method 1: Performance API - find video ID in loaded resources
         try {
             const resources = performance.getEntriesByType('resource');
             for (const r of resources) {
@@ -53,30 +52,62 @@
             console.warn('[ClipShare] Performance API error:', e);
         }
 
-        // Method 2: Check video poster URL
-        const video = document.querySelector('video');
-        if (video) {
-            const poster = video.getAttribute('poster') || video.poster;
-            if (poster) {
-                const match = poster.match(/Items\/([a-f0-9]{32})/i);
-                if (match) {
-                    // This is a different ID format, try to convert or use as-is
-                    console.log('[ClipShare] Found ID from poster:', match[1]);
-                }
-            }
-        }
+        return null;
+    }
 
-        // Method 3: Check for video source URLs in the page
-        const allElements = document.querySelectorAll('[src]');
-        for (const el of allElements) {
-            if (el.src && el.src.includes('/videos/')) {
-                const match = el.src.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-                if (match) {
-                    currentItemId = match[1];
-                    console.log('[ClipShare] Found video ID from element:', currentItemId);
-                    return currentItemId;
-                }
+    /**
+     * Get media path via Jellyfin API
+     */
+    async function fetchMediaPath(itemId) {
+        try {
+            // Try to get API key from various sources
+            let apiKey = null;
+
+            // Method 1: From ApiClient
+            if (window.ApiClient) {
+                apiKey = window.ApiClient.accessToken || window.ApiClient._serverInfo?.AccessToken;
             }
+
+            // Method 2: From URL parameters
+            if (!apiKey) {
+                const urlParams = new URLSearchParams(window.location.search);
+                apiKey = urlParams.get('api_key');
+            }
+
+            // Method 3: From localStorage
+            if (!apiKey) {
+                try {
+                    const serverInfo = JSON.parse(localStorage.getItem('jellyfin_credentials') || '{}');
+                    apiKey = serverInfo.Servers?.[0]?.AccessToken;
+                } catch (e) {}
+            }
+
+            if (!apiKey) {
+                console.warn('[ClipShare] No API key found');
+                return null;
+            }
+
+            // Fetch item info from Jellyfin API
+            const response = await fetch(`/Items?Ids=${itemId}&Fields=Path`, {
+                headers: {
+                    'X-Emby-Token': apiKey
+                }
+            });
+
+            if (!response.ok) {
+                console.warn('[ClipShare] Failed to fetch item info:', response.status);
+                return null;
+            }
+
+            const data = await response.json();
+
+            if (data.Items && data.Items.length > 0 && data.Items[0].Path) {
+                console.log('[ClipShare] Got media path from API:', data.Items[0].Path);
+                return data.Items[0].Path;
+            }
+
+        } catch (e) {
+            console.error('[ClipShare] Error fetching media path:', e);
         }
 
         return null;
@@ -265,20 +296,27 @@
         updateOverlay('<strong>⏳ Creating clip...</strong>');
 
         try {
-            // Get video ID using performance API
+            // Get video ID
             const videoId = getVideoId();
-
             if (!videoId) {
                 throw new Error('No video ID found. Try refreshing the page.');
             }
 
-            console.log('[ClipShare] Creating clip for item:', videoId);
+            // Get media path
+            let mediaPath = currentMediaPath || await fetchMediaPath(videoId);
+            if (!mediaPath) {
+                throw new Error('Could not get media path. Please try again.');
+            }
+            currentMediaPath = mediaPath;
+
+            console.log('[ClipShare] Creating clip for item:', videoId, 'path:', mediaPath);
 
             const response = await fetch('/ClipShare/Create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     itemId: videoId,
+                    mediaPath: mediaPath,
                     startSeconds: startTime,
                     endSeconds: endTime,
                     expireHours: expireHours
@@ -315,7 +353,7 @@
             updateOverlay(`
                 <strong style="color: #f44336;">❌ Error</strong><br><br>
                 <span style="font-size: 0.9em;">${error.message}</span><br><br>
-                <button onclick="resetSelection(); hideOverlay();" style="padding: 8px 16px; background: #444; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                <button onclick="window.__clipshare_reset && window.__clipshare_reset();" style="padding: 8px 16px; background: #444; color: white; border: none; border-radius: 6px; cursor: pointer;">
                     Close
                 </button>
             `);
@@ -333,6 +371,9 @@
             clipButton.style.background = '#00a4dc';
         }
     }
+
+    // Export reset function for inline onclick handlers
+    window.__clipshare_reset = resetSelection;
 
     function formatTime(seconds) {
         if (isNaN(seconds)) return '00:00';
