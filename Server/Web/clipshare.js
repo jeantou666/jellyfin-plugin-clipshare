@@ -21,73 +21,83 @@
     let isSelecting = false;
     let clipButton = null;
     let selectionOverlay = null;
-    let statusDisplay = null;
 
     // Configuration
     const CONFIG = {
         defaultExpireHours: 72,
         buttonId: 'clipshare-btn',
-        overlayId: 'clipshare-overlay',
-        statusId: 'clipshare-status'
+        overlayId: 'clipshare-overlay'
     };
 
+    // ============================================
+    // VIDEO ID CAPTURE via XHR interception
+    // ============================================
+    (function installInterceptor() {
+        // Intercept XHR to capture video ID
+        const originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            if (typeof url === 'string' && url.includes('/videos/')) {
+                const match = url.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+                if (match) {
+                    currentItemId = match[1];
+                    console.log('[ClipShare] Captured video ID from XHR:', currentItemId);
+                }
+            }
+            return originalOpen.apply(this, arguments);
+        };
+
+        // Intercept fetch to capture video ID
+        const originalFetch = window.fetch;
+        window.fetch = function(input, init) {
+            let url = typeof input === 'string' ? input : input?.url;
+            if (typeof url === 'string' && url.includes('/videos/')) {
+                const match = url.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+                if (match) {
+                    currentItemId = match[1];
+                    console.log('[ClipShare] Captured video ID from fetch:', currentItemId);
+                }
+            }
+            return originalFetch.call(this, input, init);
+        };
+
+        console.log('[ClipShare] XHR/Fetch interceptors installed');
+    })();
+
     /**
-     * Create the clip button in the player controls
+     * Create the clip button (fixed position for visibility)
      */
     function createClipButton() {
-        // Don't create if already exists
         if (document.getElementById(CONFIG.buttonId)) return;
 
-        // Find the video player controls
-        const controls = document.querySelector('.videoOsdBottom .osdControls') ||
-                        document.querySelector('.videoOsdBottom') ||
-                        document.querySelector('.osdControls');
-
-        if (!controls) {
-            console.log('[ClipShare] Controls not found, retrying...');
-            setTimeout(createClipButton, 1000);
-            return;
-        }
-
-        // Create button
         clipButton = document.createElement('button');
         clipButton.id = CONFIG.buttonId;
-        clipButton.className = 'osdControlButton';
+        clipButton.innerHTML = '✂️ Clip';
         clipButton.title = 'Create Clip (C)';
-        clipButton.innerHTML = `
-            <span class="material-icons" style="font-size: 1.4em;">content_cut</span>
-            <span style="margin-left: 5px; font-size: 0.9em;">Clip</span>
-        `;
-
-        // Add styles
         clipButton.style.cssText = `
-            background: transparent;
-            border: none;
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            z-index: 99999;
+            background: #00a4dc;
             color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
             cursor: pointer;
-            padding: 8px 12px;
-            display: flex;
-            align-items: center;
-            border-radius: 4px;
-            transition: background-color 0.2s;
+            font-size: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.2s, background-color 0.2s;
         `;
 
-        clipButton.onmouseenter = () => clipButton.style.backgroundColor = 'rgba(255,255,255,0.1)';
-        clipButton.onmouseleave = () => clipButton.style.backgroundColor = 'transparent';
-
+        clipButton.onmouseenter = () => clipButton.style.transform = 'scale(1.05)';
+        clipButton.onmouseleave = () => clipButton.style.transform = 'scale(1)';
         clipButton.onclick = toggleSelectionMode;
 
-        // Insert button
-        const buttonsContainer = controls.querySelector('.osdButtons') || controls;
-        buttonsContainer.appendChild(clipButton);
-
+        document.body.appendChild(clipButton);
         console.log('[ClipShare] Button created');
 
-        // Create selection overlay
         createSelectionOverlay();
-
-        // Get current video item ID
-        updateCurrentItemId();
     }
 
     /**
@@ -102,14 +112,15 @@
             position: fixed;
             top: 70px;
             right: 20px;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.9);
             color: white;
-            padding: 15px 20px;
-            border-radius: 8px;
+            padding: 20px;
+            border-radius: 12px;
             z-index: 99999;
             display: none;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            min-width: 200px;
+            min-width: 250px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
         `;
 
         document.body.appendChild(selectionOverlay);
@@ -121,20 +132,20 @@
     function updateOverlay(text, showInput = false) {
         if (!selectionOverlay) return;
 
-        let content = `<div style="margin-bottom: 10px;">${text}</div>`;
+        let content = `<div style="margin-bottom: 10px; line-height: 1.5;">${text}</div>`;
 
         if (showInput) {
             content += `
-                <div style="margin-top: 10px;">
-                    <label style="font-size: 0.9em; display: block; margin-bottom: 5px;">Expiration (hours):</label>
+                <div style="margin-top: 15px;">
+                    <label style="font-size: 0.9em; display: block; margin-bottom: 5px; color: #aaa;">Expiration (hours):</label>
                     <input type="number" id="clipshare-expire" value="${CONFIG.defaultExpireHours}"
-                           style="width: 100%; padding: 5px; border-radius: 4px; border: none;">
+                           style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #222; color: white; box-sizing: border-box;">
                 </div>
-                <div style="margin-top: 10px; display: flex; gap: 10px;">
-                    <button id="clipshare-create" style="flex: 1; padding: 8px; background: #00a4dc; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button id="clipshare-create" style="flex: 1; padding: 10px; background: #00a4dc; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
                         Create Clip
                     </button>
-                    <button id="clipshare-cancel" style="flex: 1; padding: 8px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <button id="clipshare-cancel" style="flex: 1; padding: 10px; background: #444; color: white; border: none; border-radius: 6px; cursor: pointer;">
                         Cancel
                     </button>
                 </div>
@@ -144,7 +155,6 @@
         selectionOverlay.innerHTML = content;
         selectionOverlay.style.display = 'block';
 
-        // Add event listeners if buttons exist
         const createBtn = document.getElementById('clipshare-create');
         const cancelBtn = document.getElementById('clipshare-cancel');
 
@@ -152,34 +162,20 @@
         if (cancelBtn) cancelBtn.onclick = resetSelection;
     }
 
-    /**
-     * Hide the overlay
-     */
     function hideOverlay() {
-        if (selectionOverlay) {
-            selectionOverlay.style.display = 'none';
-        }
+        if (selectionOverlay) selectionOverlay.style.display = 'none';
     }
 
-    /**
-     * Toggle selection mode
-     */
     function toggleSelectionMode() {
         if (startTime !== null && endTime !== null) {
-            // Already have selection, show confirmation
             showClipConfirmation();
         } else if (startTime !== null) {
-            // Set end time
             setEndTime();
         } else {
-            // Start selection
             startSelection();
         }
     }
 
-    /**
-     * Start the selection process
-     */
     function startSelection() {
         const video = document.querySelector('video');
         if (!video) {
@@ -191,77 +187,56 @@
         endTime = null;
         isSelecting = true;
 
-        const startFormatted = formatTime(startTime);
+        clipButton.innerHTML = '⏹ End';
+        clipButton.style.background = '#ff9800';
+
         updateOverlay(`
-            <strong>🎬 Clip Selection</strong><br>
-            Start: <span style="color: #00a4dc;">${startFormatted}</span><br>
-            <br>
+            <strong style="font-size: 1.1em;">🎬 Clip Selection</strong><br><br>
+            Start: <span style="color: #00a4dc; font-weight: bold;">${formatTime(startTime)}</span><br><br>
             <em style="font-size: 0.85em; color: #aaa;">
-                Click the clip button again to set the end time,<br>
-                or press <kbd style="background: #333; padding: 2px 6px; border-radius: 3px;">C</kbd> key
+                Click the button again to set the end time,<br>
+                or press <kbd style="background: #333; padding: 2px 8px; border-radius: 4px;">C</kbd>
             </em>
         `);
-
-        // Update button appearance
-        clipButton.innerHTML = `
-            <span class="material-icons" style="font-size: 1.4em; color: #00a4dc;">content_cut</span>
-            <span style="margin-left: 5px; font-size: 0.9em; color: #00a4dc;">End</span>
-        `;
 
         console.log(`[ClipShare] Start time set: ${startTime}`);
     }
 
-    /**
-     * Set the end time
-     */
     function setEndTime() {
         const video = document.querySelector('video');
         if (!video) return;
 
         const potentialEnd = video.currentTime;
 
-        // Validate: end must be after start
         if (potentialEnd <= startTime) {
             updateOverlay(`
-                <strong style="color: #f44336;">⚠️ Invalid Selection</strong><br>
+                <strong style="color: #f44336;">⚠️ Invalid Selection</strong><br><br>
                 End time must be after start time.<br>
                 <em style="font-size: 0.85em;">Current: ${formatTime(potentialEnd)}, Start: ${formatTime(startTime)}</em>
             `);
-            setTimeout(() => {
-                startSelection(); // Restart selection
-            }, 2000);
+            setTimeout(startSelection, 2000);
             return;
         }
 
         endTime = potentialEnd;
         isSelecting = false;
-
         showClipConfirmation();
     }
 
-    /**
-     * Show clip creation confirmation
-     */
     function showClipConfirmation() {
         const duration = endTime - startTime;
 
-        updateOverlay(`
-            <strong>🎬 Clip Ready</strong><br>
-            Start: <span style="color: #00a4dc;">${formatTime(startTime)}</span><br>
-            End: <span style="color: #00a4dc;">${formatTime(endTime)}</span><br>
-            Duration: <span style="color: #4caf50;">${formatTime(duration)}</span>
-        `, true);
+        clipButton.innerHTML = '✂️ Clip';
+        clipButton.style.background = '#00a4dc';
 
-        // Reset button
-        clipButton.innerHTML = `
-            <span class="material-icons" style="font-size: 1.4em;">content_cut</span>
-            <span style="margin-left: 5px; font-size: 0.9em;">Clip</span>
-        `;
+        updateOverlay(`
+            <strong style="font-size: 1.1em;">🎬 Clip Ready</strong><br><br>
+            Start: <span style="color: #00a4dc; font-weight: bold;">${formatTime(startTime)}</span><br>
+            End: <span style="color: #00a4dc; font-weight: bold;">${formatTime(endTime)}</span><br>
+            Duration: <span style="color: #4caf50; font-weight: bold;">${formatTime(duration)}</span>
+        `, true);
     }
 
-    /**
-     * Create the clip via API
-     */
     async function createClip() {
         if (!startTime || !endTime) return;
 
@@ -271,17 +246,18 @@
         updateOverlay('<strong>⏳ Creating clip...</strong>');
 
         try {
-            // Get the item ID
-            const itemId = getCurrentItemId();
-            if (!itemId) {
-                throw new Error('Could not determine video ID');
+            // Get the captured video ID
+            if (!currentItemId) {
+                throw new Error('No video ID captured. Try reloading the page and playing a video first.');
             }
+
+            console.log('[ClipShare] Creating clip for item:', currentItemId);
 
             const response = await fetch('/ClipShare/Create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    itemId: itemId,
+                    itemId: currentItemId,
                     startSeconds: startTime,
                     endSeconds: endTime,
                     expireHours: expireHours
@@ -290,107 +266,53 @@
 
             if (!response.ok) {
                 const error = await response.text();
-                throw new Error(error || 'Server error');
+                throw new Error(error || `Server error: ${response.status}`);
             }
 
             const data = await response.json();
 
-            // Show success with copy button
             updateOverlay(`
-                <strong style="color: #4caf50;">✅ Clip Created!</strong><br>
+                <strong style="color: #4caf50; font-size: 1.1em;">✅ Clip Created!</strong><br><br>
+                <input type="text" value="${data.url}" readonly
+                       style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: #222; color: white; box-sizing: border-box;"
+                       id="clipshare-url" onclick="this.select();">
                 <div style="margin-top: 10px;">
-                    <input type="text" value="${data.url}" readonly
-                           style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: white;"
-                           id="clipshare-url">
-                </div>
-                <div style="margin-top: 10px;">
-                    <button onclick="navigator.clipboard.writeText(document.getElementById('clipshare-url').value); this.textContent='Copied!';"
-                            style="width: 100%; padding: 8px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                        Copy URL
+                    <button onclick="navigator.clipboard.writeText(document.getElementById('clipshare-url').value); this.textContent='✓ Copied!'; this.style.background='#4caf50';"
+                            style="width: 100%; padding: 10px; background: #00a4dc; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                        📋 Copy URL
                     </button>
                 </div>
             `);
 
-            // Auto-hide after 10 seconds
             setTimeout(() => {
                 hideOverlay();
                 resetSelection();
-            }, 10000);
+            }, 15000);
 
         } catch (error) {
             console.error('[ClipShare] Error:', error);
             updateOverlay(`
-                <strong style="color: #f44336;">❌ Error</strong><br>
-                ${error.message}
+                <strong style="color: #f44336;">❌ Error</strong><br><br>
+                <span style="font-size: 0.9em;">${error.message}</span><br><br>
+                <button onclick="resetSelection(); hideOverlay();" style="padding: 8px 16px; background: #444; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                    Close
+                </button>
             `);
-            setTimeout(hideOverlay, 3000);
         }
     }
 
-    /**
-     * Reset the selection
-     */
     function resetSelection() {
         startTime = null;
         endTime = null;
         isSelecting = false;
         hideOverlay();
 
-        // Reset button
         if (clipButton) {
-            clipButton.innerHTML = `
-                <span class="material-icons" style="font-size: 1.4em;">content_cut</span>
-                <span style="margin-left: 5px; font-size: 0.9em;">Clip</span>
-            `;
+            clipButton.innerHTML = '✂️ Clip';
+            clipButton.style.background = '#00a4dc';
         }
     }
 
-    /**
-     * Get the current video item ID from Jellyfin
-     */
-    function getCurrentItemId() {
-        // Try multiple ways to get the item ID
-        if (currentItemId) return currentItemId;
-
-        // Method 1: From window.ApiClient
-        if (window.ApiClient) {
-            // Try _currentItem
-            if (window.ApiClient._currentItem?.Id) {
-                return window.ApiClient._currentItem.Id;
-            }
-            // Try _serverInfo
-            if (window.ApiClient._serverInfo?.ItemId) {
-                return window.ApiClient._serverInfo.ItemId;
-            }
-        }
-
-        // Method 2: From URL
-        const urlMatch = window.location.href.match(/\/(?:video|play)\/([a-f0-9-]+)/i);
-        if (urlMatch) return urlMatch[1];
-
-        // Method 3: From playbackManager
-        if (window.playbackManager?._currentItem?.Id) {
-            return window.playbackManager._currentItem.Id;
-        }
-
-        return null;
-    }
-
-    /**
-     * Update the current item ID
-     */
-    function updateCurrentItemId() {
-        // Listen for playback state changes
-        document.addEventListener('viewshow', (e) => {
-            if (e.detail?.options?.itemId) {
-                currentItemId = e.detail.options.itemId;
-            }
-        });
-    }
-
-    /**
-     * Format seconds to HH:MM:SS
-     */
     function formatTime(seconds) {
         if (isNaN(seconds)) return '00:00';
 
@@ -404,57 +326,36 @@
         return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
-    /**
-     * Handle keyboard shortcuts
-     */
     function handleKeyboard(e) {
         if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            // Check if we're in an input field
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
             e.preventDefault();
             toggleSelectionMode();
         }
 
-        // Escape to cancel
         if (e.key === 'Escape' && (startTime !== null || endTime !== null)) {
             resetSelection();
         }
     }
 
-    /**
-     * Initialize
-     */
     function init() {
         console.log('[ClipShare] Starting initialization...');
 
-        // Wait for player to be ready
+        // Wait for video element
         const checkPlayer = setInterval(() => {
-            const video = document.querySelector('video');
-            const controls = document.querySelector('.videoOsdBottom, .osdControls');
-
-            if (video && controls) {
+            if (document.querySelector('video')) {
                 clearInterval(checkPlayer);
                 console.log('[ClipShare] Player detected, creating UI');
                 createClipButton();
             }
         }, 500);
 
-        // Stop checking after 30 seconds
         setTimeout(() => clearInterval(checkPlayer), 30000);
 
-        // Add keyboard listener
         document.addEventListener('keydown', handleKeyboard);
-
-        // Watch for navigation/view changes (Jellyfin SPA)
-        document.addEventListener('viewshow', () => {
-            setTimeout(createClipButton, 500);
-        });
-
         console.log('[ClipShare] Initialization complete');
     }
 
-    // Start when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
