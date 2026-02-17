@@ -34,53 +34,37 @@ jobs:
       run: dotnet publish Server/ClipShare.csproj -c Release -o publish
 
     # ---------------- PACKAGE SERVER ----------------
-    - name: Create server package
+    - name: Create plugin package
       run: |
-        mkdir serverpkg
-        cp -r publish/* serverpkg/
-        cd serverpkg
-        zip -r ../clipshare-server.zip .
-
-    # ---------------- PACKAGE WEB ----------------
-    - name: Create web package
-      run: |
-        mkdir -p webpkg
-        cp -r Web/* webpkg/
-        cd webpkg
-        zip -r ../clipshare-web.zip .
+        mkdir pkg
+        cp -r publish/* pkg/
+        cd pkg
+        zip -r ../clipshare.zip .
 
     # ---------------- CREATE RELEASE ----------------
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        files: |
-          clipshare-server.zip
-          clipshare-web.zip
+        files: clipshare.zip
 
     - name: Wait GitHub CDN
       run: sleep 20
 
-    - name: Get real asset URLs + checksum
+    - name: Get real asset URL + checksum
       run: |
         VERSION=${GITHUB_REF_NAME}
-    
+
         API="https://api.github.com/repos/${{ github.repository }}/releases/tags/${VERSION}"
         curl -s $API > release.json
-    
-        SERVER_URL=$(jq -r '.assets[] | select(.name=="clipshare-server.zip") | .browser_download_url' release.json)
-        WEB_URL=$(jq -r '.assets[] | select(.name=="clipshare-web.zip") | .browser_download_url' release.json)
-    
-        echo "SERVER_URL=$SERVER_URL" >> $GITHUB_ENV
-        echo "WEB_URL=$WEB_URL" >> $GITHUB_ENV
-    
-        curl -L -o server.zip "$SERVER_URL"
-        curl -L -o web.zip "$WEB_URL"
-    
+
+        DOWNLOAD_URL=$(jq -r '.assets[] | select(.name=="clipshare.zip") | .browser_download_url' release.json)
+
+        echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+
+        curl -L -o plugin.zip "$DOWNLOAD_URL"
+
         # Jellyfin requires MD5 in UPPERCASE
-        md5sum server.zip | awk '{print toupper($1)}' > server.sha
-        md5sum web.zip | awk '{print toupper($1)}' > web.sha
-
-
+        md5sum plugin.zip | awk '{print toupper($1)}' > plugin.sha
 
     # ---------------- SWITCH TO MAIN ----------------
     - name: Switch to main branch
@@ -92,12 +76,10 @@ jobs:
     # ---------------- UPDATE MANIFEST ----------------
     - name: Update repository manifest
       run: |
-        SERVER_SHA=$(cat server.sha)
-        WEB_SHA=$(cat web.sha)
+        CHECKSUM=$(cat plugin.sha)
 
         VERSION=${GITHUB_REF_NAME#v}
-        URL_SERVER="$SERVER_URL"
-        URL_WEB="$WEB_URL"
+        URL="$DOWNLOAD_URL"
 
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -105,35 +87,22 @@ jobs:
 
         jq \
           --arg version "$VERSION" \
-          --arg url_server "$URL_SERVER" \
-          --arg url_web "$URL_WEB" \
+          --arg url "$URL" \
           --arg ts "$TIMESTAMP" \
-          --arg server_sha "$SERVER_SHA" \
-          --arg web_sha "$WEB_SHA" \
+          --arg checksum "$CHECKSUM" \
         '
         .[0].versions |=
         ([{
           version: $version,
           changelog: "Auto build",
           targetAbi: "10.11.0.0",
-          sourceUrl: $url_server,
-          checksum: $server_sha,
-          timestamp: $ts
-        }] + .)
-        |
-        .[1].versions |=
-        ([{
-          version: $version,
-          changelog: "Auto build",
-          targetAbi: "10.11.0.0",
-          sourceUrl: $url_web,
-          checksum: $web_sha,
+          sourceUrl: $url,
+          checksum: $checksum,
           timestamp: $ts
         }] + .)
         ' repository/manifest.json > "$tmp"
 
         mv "$tmp" repository/manifest.json
-
 
     # ---------------- COMMIT ----------------
     - name: Commit manifest
