@@ -4,11 +4,10 @@ using System.IO;
 using System.Threading.Tasks;
 using ClipShare.Models;
 using ClipShare.Services;
-using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 
 namespace ClipShare.Controllers
 {
@@ -25,27 +24,123 @@ namespace ClipShare.Controllers
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
-            // Get ILibraryManager from HttpContext.RequestServices (service locator pattern)
-            var libraryManager = HttpContext.RequestServices.GetService<ILibraryManager>();
+            // Try to get the media path using multiple approaches
+            string mediaPath = null;
 
-            if (libraryManager == null)
+            // Approach 1: Try via ILibraryManager from DI
+            try
             {
-                return StatusCode(500, "ILibraryManager not available");
+                var libraryManagerType = Type.GetType("MediaBrowser.Controller.Library.ILibraryManager, MediaBrowser.Controller");
+                if (libraryManagerType != null)
+                {
+                    var service = HttpContext.RequestServices.GetService(libraryManagerType);
+                    if (service != null)
+                    {
+                        var getItemMethod = libraryManagerType.GetMethod("GetItemById", new[] { typeof(Guid) });
+                        if (getItemMethod != null)
+                        {
+                            var item = getItemMethod.Invoke(service, new object[] { new Guid(request.ItemId) });
+                            if (item != null)
+                            {
+                                var pathProperty = item.GetType().GetProperty("Path");
+                                if (pathProperty != null)
+                                {
+                                    mediaPath = pathProperty.GetValue(item)?.ToString();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ClipShare] Approach 1 failed: {ex.Message}");
             }
 
-            var item = libraryManager.GetItemById(new Guid(request.ItemId));
-            if (item == null)
-                return NotFound("Media not found");
+            // Approach 2: Try via plugin instance
+            if (string.IsNullOrEmpty(mediaPath))
+            {
+                try
+                {
+                    var plugin = ClipSharePlugin.Instance;
+                    if (plugin != null)
+                    {
+                        // Try to get via application paths
+                        var appPathsField = plugin.GetType().BaseType?.GetField("_applicationPaths",
+                            BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (appPathsField != null)
+                        {
+                            // Can't easily access library from here
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ClipShare] Approach 2 failed: {ex.Message}");
+                }
+            }
 
-            var path = item.Path;
+            // Approach 3: Try to make internal API call to get item info
+            if (string.IsNullOrEmpty(mediaPath))
+            {
+                try
+                {
+                    // Get item info via Jellyfin's internal API
+                    using var client = new System.Net.Http.HttpClient();
+
+                    // Try to find the API key from current request
+                    var apiKey = Request.Headers["X-Emby-Token"].FirstOrDefault();
+                    if (string.IsNullOrEmpty(apiKey))
+                    {
+                        apiKey = Request.Query["api_key"].FirstOrDefault();
+                    }
+
+                    if (!string.IsNullOrEmpty(apiKey))
+                    {
+                        var itemUrl = $"{Request.Scheme}://{Request.Host}/Items?Ids={request.ItemId}&Fields=Path";
+                        client.DefaultRequestHeaders.Add("X-Emby-Token", apiKey);
+
+                        var response = await client.GetAsync(itemUrl);
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var content = await response.Content.ReadAsStringAsync();
+                            var json = System.Text.Json.JsonDocument.Parse(content);
+
+                            if (json.RootElement.TryGetProperty("Items", out var items) &&
+                                items.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                                items.GetArrayLength() > 0)
+                            {
+                                var firstItem = items[0];
+                                if (firstItem.TryGetProperty("Path", out var pathElement))
+                                {
+                                    mediaPath = pathElement.GetString();
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ClipShare] Approach 3 failed: {ex.Message}");
+                }
+            }
+
+            if (string.IsNullOrEmpty(mediaPath))
+            {
+                return StatusCode(500, "Could not find media path. Try providing the path directly.");
+            }
+
+            if (!System.IO.File.Exists(mediaPath))
+            {
+                return NotFound($"Media file not found: {mediaPath}");
+            }
+
             var id = Guid.NewGuid().ToString("N");
-
             var folder = Path.Combine(AppContext.BaseDirectory, "clipshare");
             Directory.CreateDirectory(folder);
-
             var output = Path.Combine(folder, $"{id}.mp4");
 
-            await _generator.GenerateClip(path, output, request.StartSeconds, request.EndSeconds);
+            await _generator.GenerateClip(mediaPath, output, request.StartSeconds, request.EndSeconds);
 
             var expire = DateTime.UtcNow.AddHours(
                 request.ExpireHours > 0 ? request.ExpireHours : ClipSharePlugin.Instance!.Configuration.DefaultExpirationHours
@@ -59,7 +154,7 @@ namespace ClipShare.Controllers
             };
 
             var url = $"{Request.Scheme}://{Request.Host}/ClipShare/video/{id}";
-            return Ok(new { url });
+            return Ok(new { url, path = mediaPath });
         }
 
         [HttpGet("video/{id}")]
