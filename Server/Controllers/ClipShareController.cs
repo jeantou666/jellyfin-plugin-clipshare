@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Threading.Tasks;
 using ClipShare.Models;
-using ClipShare.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Linq;
