@@ -1,6 +1,7 @@
 using System.IO;
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
+using System;
 
 namespace ClipShare.Controllers
 {
@@ -23,6 +24,34 @@ namespace ClipShare.Controllers
                 return Content("// ClipShare script not found", "application/javascript");
 
             return Content(script, "application/javascript");
+        }
+
+        /// <summary>
+        /// Debug endpoint to check paths and permissions.
+        /// </summary>
+        [HttpGet("debug")]
+        public IActionResult Debug()
+        {
+            var result = new
+            {
+                EnvironmentVariables = new
+                {
+                    JELLYFIN_CACHE_DIR = Environment.GetEnvironmentVariable("JELLYFIN_CACHE_DIR"),
+                    TEMP = Environment.GetEnvironmentVariable("TEMP"),
+                    TMP = Environment.GetEnvironmentVariable("TMP")
+                },
+                PossiblePaths = new
+                {
+                    CacheDir = "/var/cache/jellyfin",
+                    CacheDirExists = Directory.Exists("/var/cache/jellyfin"),
+                    TempPath = Path.GetTempPath(),
+                    TempPathExists = Directory.Exists(Path.GetTempPath())
+                },
+                CurrentDirectory = Directory.GetCurrentDirectory(),
+                BaseDirectory = AppContext.BaseDirectory
+            };
+
+            return Ok(result);
         }
 
         private static string GetEmbeddedScript()
