@@ -8,6 +8,7 @@ using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ClipShare.Controllers
 {
@@ -19,18 +20,20 @@ namespace ClipShare.Controllers
         public static IEnumerable<ClipInfo> GetAllClips() => Clips.Values;
         public static void RemoveClip(string id) => Clips.TryRemove(id, out _);
 
-        private readonly ILibraryManager _libraryManager;
         private readonly ClipGenerator _generator = new();
-
-        public ClipShareController(ILibraryManager libraryManager)
-        {
-            _libraryManager = libraryManager;
-        }
 
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
-            var item = _libraryManager.GetItemById(new Guid(request.ItemId));
+            // Get ILibraryManager from HttpContext.RequestServices (service locator pattern)
+            var libraryManager = HttpContext.RequestServices.GetService<ILibraryManager>();
+
+            if (libraryManager == null)
+            {
+                return StatusCode(500, "ILibraryManager not available");
+            }
+
+            var item = libraryManager.GetItemById(new Guid(request.ItemId));
             if (item == null)
                 return NotFound("Media not found");
 
