@@ -23,7 +23,7 @@ namespace ClipShare.Controllers
         {
             var logger = HttpContext.RequestServices.GetService(typeof(ILogger<ClipShareController>)) as ILogger<ClipShareController>;
             
-            logger?.LogInformation("Create clip request: ItemId={ItemId}, Start={Start}, End={End}", 
+            logger?.LogInformation("[ClipShare] Create clip request: ItemId={ItemId}, Start={Start}, End={End}", 
                 request.ItemId, request.StartSeconds, request.EndSeconds);
 
             // Use media path provided by client
@@ -36,7 +36,7 @@ namespace ClipShare.Controllers
 
             if (!System.IO.File.Exists(mediaPath))
             {
-                logger?.LogError("Media file not found: {Path}", mediaPath);
+                logger?.LogError("[ClipShare] Media file not found: {Path}", mediaPath);
                 return NotFound($"Media file not found: {mediaPath}");
             }
 
@@ -44,7 +44,23 @@ namespace ClipShare.Controllers
             var folder = GetClipFolder(logger);
             var output = Path.Combine(folder, $"{id}.mp4");
 
-            logger?.LogInformation("Output path: {Output}", output);
+            logger?.LogInformation("[ClipShare] Output path: {Output}", output);
+            logger?.LogInformation("[ClipShare] Folder exists: {Exists}", Directory.Exists(folder));
+            logger?.LogInformation("[ClipShare] Folder writable: checking...");
+
+            // Test write permission
+            try
+            {
+                var testFile = Path.Combine(folder, "test.txt");
+                await System.IO.File.WriteAllTextAsync(testFile, "test");
+                System.IO.File.Delete(testFile);
+                logger?.LogInformation("[ClipShare] Folder is writable");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError("[ClipShare] Folder not writable: {Error}", ex.Message);
+                return StatusCode(500, $"Output folder not writable: {ex.Message}");
+            }
 
             try
             {
@@ -52,7 +68,7 @@ namespace ClipShare.Controllers
             }
             catch (Exception ex)
             {
-                logger?.LogError(ex, "Failed to generate clip");
+                logger?.LogError("[ClipShare] Failed to generate clip: {Error}", ex.Message);
                 return StatusCode(500, $"Failed to generate clip: {ex.Message}");
             }
 
@@ -68,7 +84,7 @@ namespace ClipShare.Controllers
             };
 
             var url = $"{Request.Scheme}://{Request.Host}/ClipShare/video/{id}";
-            logger?.LogInformation("Clip created: {Url}", url);
+            logger?.LogInformation("[ClipShare] Clip created: {Url}", url);
             return Ok(new { url });
         }
 
@@ -91,31 +107,41 @@ namespace ClipShare.Controllers
 
         private string GetClipFolder(ILogger? logger)
         {
-            // Use Jellyfin's cache directory or temp directory
+            // Priority 1: /tmp - should always be writable
+            var tmpFolder = "/tmp/jellyfin-clipshare";
+            try
+            {
+                Directory.CreateDirectory(tmpFolder);
+                logger?.LogInformation("[ClipShare] Using /tmp folder: {Dir}", tmpFolder);
+                return tmpFolder;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning("[ClipShare] Cannot use /tmp: {Error}", ex.Message);
+            }
+
+            // Priority 2: Jellyfin cache directory
             var cachePath = Environment.GetEnvironmentVariable("JELLYFIN_CACHE_DIR");
             if (!string.IsNullOrEmpty(cachePath) && Directory.Exists(cachePath))
             {
                 var clipFolder = Path.Combine(cachePath, "clipshare");
-                Directory.CreateDirectory(clipFolder);
-                logger?.LogInformation("Using cache directory: {Dir}", clipFolder);
-                return clipFolder;
+                try
+                {
+                    Directory.CreateDirectory(clipFolder);
+                    logger?.LogInformation("[ClipShare] Using cache directory: {Dir}", clipFolder);
+                    return clipFolder;
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning("[ClipShare] Cannot use cache dir: {Error}", ex.Message);
+                }
             }
 
-            // Try /var/cache/jellyfin
-            var varCache = "/var/cache/jellyfin";
-            if (Directory.Exists(varCache))
-            {
-                var clipFolder = Path.Combine(varCache, "clipshare");
-                Directory.CreateDirectory(clipFolder);
-                logger?.LogInformation("Using /var/cache/jellyfin: {Dir}", clipFolder);
-                return clipFolder;
-            }
-
-            // Fallback to temp directory
+            // Priority 3: System temp
             var tempPath = Path.GetTempPath();
             var tempClipFolder = Path.Combine(tempPath, "jellyfin-clipshare");
             Directory.CreateDirectory(tempClipFolder);
-            logger?.LogInformation("Using temp directory: {Dir}", tempClipFolder);
+            logger?.LogInformation("[ClipShare] Using system temp: {Dir}", tempClipFolder);
             return tempClipFolder;
         }
 
@@ -123,32 +149,15 @@ namespace ClipShare.Controllers
         {
             var duration = end - start;
 
-            // Use Jellyfin's ffmpeg if available, otherwise fallback to system ffmpeg
+            // Use Jellyfin's ffmpeg
             var ffmpegPath = "/usr/lib/jellyfin-ffmpeg/ffmpeg";
-            if (!System.IO.File.Exists(ffmpegPath))
-            {
-                ffmpegPath = "ffmpeg";
-            }
 
-            // Ensure output directory exists and is writable
-            var outputDir = Path.GetDirectoryName(output);
-            if (!string.IsNullOrEmpty(outputDir))
-            {
-                Directory.CreateDirectory(outputDir);
-                logger?.LogInformation("Output directory: {Dir}", outputDir);
-            }
+            // FFmpeg command: -ss before -i for fast seeking, -t for duration
+            // -y to overwrite output
+            // -c copy for stream copy (fast)
+            var args = $"-y -ss {start:F2} -t {duration:F2} -i \"{input}\" -c copy -avoid_negative_ts make_zero \"{output}\"";
 
-            // Check input file
-            if (!System.IO.File.Exists(input))
-            {
-                throw new Exception($"Input file not found: {input}");
-            }
-
-            // Use -ss before -i for fast seeking, then -t for duration
-            // -c copy for stream copy (fast, no re-encoding)
-            var args = $"-ss {start:F2} -t {duration:F2} -i \"{input}\" -c copy -avoid_negative_ts make_zero \"{output}\"";
-
-            logger?.LogInformation("Running FFmpeg: {Ffmpeg} {Args}", ffmpegPath, args);
+            logger?.LogInformation("[ClipShare] Running: {Ffmpeg} {Args}", ffmpegPath, args);
 
             var process = new System.Diagnostics.Process
             {
@@ -169,13 +178,19 @@ namespace ClipShare.Controllers
             process.ErrorDataReceived += (s, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
+                {
                     errorOutput.AppendLine(e.Data);
+                    logger?.LogDebug("[ClipShare] FFmpeg stderr: {Line}", e.Data);
+                }
             };
 
             process.OutputDataReceived += (s, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
+                {
                     standardOutput.AppendLine(e.Data);
+                    logger?.LogDebug("[ClipShare] FFmpeg stdout: {Line}", e.Data);
+                }
             };
 
             process.Start();
@@ -187,11 +202,14 @@ namespace ClipShare.Controllers
             var exitCode = process.ExitCode;
             var error = errorOutput.ToString();
 
-            logger?.LogInformation("FFmpeg exit code: {Code}", exitCode);
+            logger?.LogInformation("[ClipShare] FFmpeg exit code: {Code}", exitCode);
+            logger?.LogInformation("[ClipShare] FFmpeg output file exists: {Exists}", System.IO.File.Exists(output));
 
             if (exitCode != 0)
             {
-                logger?.LogError("FFmpeg error output: {Error}", error);
+                // Log last 10 lines of error output
+                var errorLines = error.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(10);
+                logger?.LogError("[ClipShare] FFmpeg last error lines: {Errors}", string.Join("\n", errorLines));
                 throw new Exception($"FFmpeg failed with exit code {exitCode}");
             }
 
@@ -200,7 +218,8 @@ namespace ClipShare.Controllers
                 throw new Exception("FFmpeg completed but output file was not created");
             }
 
-            logger?.LogInformation("Clip created successfully: {Output}", output);
+            var fileInfo = new FileInfo(output);
+            logger?.LogInformation("[ClipShare] Clip created: {Output}, Size: {Size} bytes", output, fileInfo.Length);
         }
     }
 }
