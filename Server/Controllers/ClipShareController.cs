@@ -20,6 +20,24 @@ namespace ClipShare.Controllers
 
         private readonly ClipGenerator _generator = new();
 
+        private string GetClipFolder()
+        {
+            // Use Jellyfin's cache directory or temp directory
+            var cachePath = Environment.GetEnvironmentVariable("JELLYFIN_CACHE_DIR");
+            if (!string.IsNullOrEmpty(cachePath) && Directory.Exists(cachePath))
+            {
+                var clipFolder = Path.Combine(cachePath, "clipshare");
+                Directory.CreateDirectory(clipFolder);
+                return clipFolder;
+            }
+
+            // Fallback to temp directory
+            var tempPath = Path.GetTempPath();
+            var tempClipFolder = Path.Combine(tempPath, "jellyfin-clipshare");
+            Directory.CreateDirectory(tempClipFolder);
+            return tempClipFolder;
+        }
+
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
@@ -37,8 +55,7 @@ namespace ClipShare.Controllers
             }
 
             var id = Guid.NewGuid().ToString("N");
-            var folder = Path.Combine(AppContext.BaseDirectory, "clipshare");
-            Directory.CreateDirectory(folder);
+            var folder = GetClipFolder();
             var output = Path.Combine(folder, $"{id}.mp4");
 
             try
