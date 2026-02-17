@@ -54,7 +54,7 @@ namespace ClipShare.Controllers
             return Ok(result);
         }
 
-        private static string GetEmbeddedScript()
+        private static string? GetEmbeddedScript()
         {
             var assembly = typeof(ClipSharePlugin).Assembly;
 

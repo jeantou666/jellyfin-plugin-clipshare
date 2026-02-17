@@ -89,7 +89,7 @@ namespace ClipShare.Controllers
             return File(stream, "video/mp4", enableRangeProcessing: true);
         }
 
-        private string GetClipFolder(ILogger logger)
+        private string GetClipFolder(ILogger? logger)
         {
             // Use Jellyfin's cache directory or temp directory
             var cachePath = Environment.GetEnvironmentVariable("JELLYFIN_CACHE_DIR");
@@ -119,13 +119,13 @@ namespace ClipShare.Controllers
             return tempClipFolder;
         }
 
-        private async Task GenerateClip(string input, string output, double start, double end, ILogger logger)
+        private async Task GenerateClip(string input, string output, double start, double end, ILogger? logger)
         {
             var duration = end - start;
 
             // Use Jellyfin's ffmpeg if available, otherwise fallback to system ffmpeg
             var ffmpegPath = "/usr/lib/jellyfin-ffmpeg/ffmpeg";
-            if (!File.Exists(ffmpegPath))
+            if (!System.IO.File.Exists(ffmpegPath))
             {
                 ffmpegPath = "ffmpeg";
             }
@@ -139,7 +139,7 @@ namespace ClipShare.Controllers
             }
 
             // Check input file
-            if (!File.Exists(input))
+            if (!System.IO.File.Exists(input))
             {
                 throw new Exception($"Input file not found: {input}");
             }
@@ -195,7 +195,7 @@ namespace ClipShare.Controllers
                 throw new Exception($"FFmpeg failed with exit code {exitCode}");
             }
 
-            if (!File.Exists(output))
+            if (!System.IO.File.Exists(output))
             {
                 throw new Exception("FFmpeg completed but output file was not created");
             }
