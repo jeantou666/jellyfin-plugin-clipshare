@@ -29,39 +29,58 @@
         overlayId: 'clipshare-overlay'
     };
 
-    // ============================================
-    // VIDEO ID CAPTURE via XHR interception
-    // ============================================
-    (function installInterceptor() {
-        // Intercept XHR to capture video ID
-        const originalOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url) {
-            if (typeof url === 'string' && url.includes('/videos/')) {
-                const match = url.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-                if (match) {
-                    currentItemId = match[1];
-                    console.log('[ClipShare] Captured video ID from XHR:', currentItemId);
+    /**
+     * Get video ID from loaded resources (performance API)
+     */
+    function getVideoId() {
+        // Check cached value first
+        if (currentItemId) return currentItemId;
+
+        // Method 1: Performance API - find video ID in loaded resources
+        try {
+            const resources = performance.getEntriesByType('resource');
+            for (const r of resources) {
+                if (r.name && r.name.includes('/videos/')) {
+                    const match = r.name.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+                    if (match) {
+                        currentItemId = match[1];
+                        console.log('[ClipShare] Found video ID from resources:', currentItemId);
+                        return currentItemId;
+                    }
                 }
             }
-            return originalOpen.apply(this, arguments);
-        };
+        } catch (e) {
+            console.warn('[ClipShare] Performance API error:', e);
+        }
 
-        // Intercept fetch to capture video ID
-        const originalFetch = window.fetch;
-        window.fetch = function(input, init) {
-            let url = typeof input === 'string' ? input : input?.url;
-            if (typeof url === 'string' && url.includes('/videos/')) {
-                const match = url.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+        // Method 2: Check video poster URL
+        const video = document.querySelector('video');
+        if (video) {
+            const poster = video.getAttribute('poster') || video.poster;
+            if (poster) {
+                const match = poster.match(/Items\/([a-f0-9]{32})/i);
                 if (match) {
-                    currentItemId = match[1];
-                    console.log('[ClipShare] Captured video ID from fetch:', currentItemId);
+                    // This is a different ID format, try to convert or use as-is
+                    console.log('[ClipShare] Found ID from poster:', match[1]);
                 }
             }
-            return originalFetch.call(this, input, init);
-        };
+        }
 
-        console.log('[ClipShare] XHR/Fetch interceptors installed');
-    })();
+        // Method 3: Check for video source URLs in the page
+        const allElements = document.querySelectorAll('[src]');
+        for (const el of allElements) {
+            if (el.src && el.src.includes('/videos/')) {
+                const match = el.src.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+                if (match) {
+                    currentItemId = match[1];
+                    console.log('[ClipShare] Found video ID from element:', currentItemId);
+                    return currentItemId;
+                }
+            }
+        }
+
+        return null;
+    }
 
     /**
      * Create the clip button (fixed position for visibility)
@@ -246,18 +265,20 @@
         updateOverlay('<strong>⏳ Creating clip...</strong>');
 
         try {
-            // Get the captured video ID
-            if (!currentItemId) {
-                throw new Error('No video ID captured. Try reloading the page and playing a video first.');
+            // Get video ID using performance API
+            const videoId = getVideoId();
+
+            if (!videoId) {
+                throw new Error('No video ID found. Try refreshing the page.');
             }
 
-            console.log('[ClipShare] Creating clip for item:', currentItemId);
+            console.log('[ClipShare] Creating clip for item:', videoId);
 
             const response = await fetch('/ClipShare/Create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    itemId: currentItemId,
+                    itemId: videoId,
                     startSeconds: startTime,
                     endSeconds: endTime,
                     expireHours: expireHours
@@ -347,6 +368,12 @@
                 clearInterval(checkPlayer);
                 console.log('[ClipShare] Player detected, creating UI');
                 createClipButton();
+
+                // Try to get video ID
+                const id = getVideoId();
+                if (id) {
+                    console.log('[ClipShare] Video ID already available:', id);
+                }
             }
         }, 500);
 
