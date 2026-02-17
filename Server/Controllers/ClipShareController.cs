@@ -152,24 +152,41 @@ namespace ClipShare.Controllers
             // Use Jellyfin's ffmpeg
             var ffmpegPath = "/usr/lib/jellyfin-ffmpeg/ffmpeg";
 
-            // FFmpeg command: -ss before -i for fast seeking, -t for duration
-            // -y to overwrite output
-            // -c copy for stream copy (fast)
-            var args = $"-y -ss {start:F2} -t {duration:F2} -i \"{input}\" -c copy -avoid_negative_ts make_zero \"{output}\"";
+            logger?.LogInformation("[ClipShare] Input path: {Input}", input);
+            logger?.LogInformation("[ClipShare] Output path: {Output}", output);
 
-            logger?.LogInformation("[ClipShare] Running: {Ffmpeg} {Args}", ffmpegPath, args);
+            // Use ArgumentList for proper handling of special characters
+            // When UseShellExecute=false, ArgumentList handles paths with spaces/special chars correctly
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            // Build arguments using ArgumentList (avoids quoting issues)
+            startInfo.ArgumentList.Add("-y");
+            startInfo.ArgumentList.Add("-ss");
+            startInfo.ArgumentList.Add(start.ToString("F2"));
+            startInfo.ArgumentList.Add("-t");
+            startInfo.ArgumentList.Add(duration.ToString("F2"));
+            startInfo.ArgumentList.Add("-i");
+            startInfo.ArgumentList.Add(input);
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("copy");
+            startInfo.ArgumentList.Add("-avoid_negative_ts");
+            startInfo.ArgumentList.Add("make_zero");
+            startInfo.ArgumentList.Add(output);
+
+            // Log the full command for debugging
+            var argsDisplay = $"-y -ss {start:F2} -t {duration:F2} -i \"{input}\" -c copy -avoid_negative_ts make_zero \"{output}\"";
+            logger?.LogInformation("[ClipShare] Running: {Ffmpeg} {Args}", ffmpegPath, argsDisplay);
 
             var process = new System.Diagnostics.Process
             {
-                StartInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = ffmpegPath,
-                    Arguments = args,
-                    RedirectStandardError = true,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
+                StartInfo = startInfo
             };
 
             var errorOutput = new System.Text.StringBuilder();
