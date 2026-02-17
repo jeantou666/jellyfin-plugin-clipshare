@@ -2,11 +2,19 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace ClipShare.Services
 {
     public class ClipGenerator
     {
+        private readonly ILogger<ClipGenerator> _logger;
+
+        public ClipGenerator(ILogger<ClipGenerator> logger)
+        {
+            _logger = logger;
+        }
+
         public async Task GenerateClip(string input, string output, double start, double end)
         {
             var duration = end - start;
@@ -18,11 +26,25 @@ namespace ClipShare.Services
                 ffmpegPath = "ffmpeg";
             }
 
+            // Ensure output directory exists and is writable
+            var outputDir = Path.GetDirectoryName(output);
+            if (!string.IsNullOrEmpty(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+                _logger.LogInformation("[ClipShare] Output directory: {Dir}", outputDir);
+            }
+
+            // Check input file
+            if (!File.Exists(input))
+            {
+                throw new Exception($"Input file not found: {input}");
+            }
+
             // Use -ss before -i for fast seeking, then -t for duration
             // -c copy for stream copy (fast, no re-encoding)
             var args = $"-ss {start:F2} -t {duration:F2} -i \"{input}\" -c copy -avoid_negative_ts make_zero \"{output}\"";
 
-            Console.WriteLine($"[ClipShare] Running: {ffmpegPath} {args}");
+            _logger.LogInformation("[ClipShare] Running: {Ffmpeg} {Args}", ffmpegPath, args);
 
             var process = new Process
             {
@@ -59,13 +81,14 @@ namespace ClipShare.Services
             await process.WaitForExitAsync();
 
             var exitCode = process.ExitCode;
+            var error = errorOutput.ToString();
+
+            _logger.LogInformation("[ClipShare] FFmpeg exit code: {Code}", exitCode);
 
             if (exitCode != 0)
             {
-                var error = errorOutput.ToString();
-                Console.WriteLine($"[ClipShare] FFmpeg exit code: {exitCode}");
-                Console.WriteLine($"[ClipShare] FFmpeg error: {error}");
-                throw new Exception($"FFmpeg failed with exit code {exitCode}: {error.Substring(0, Math.Min(500, error.Length))}");
+                _logger.LogError("[ClipShare] FFmpeg error output: {Error}", error);
+                throw new Exception($"FFmpeg failed with exit code {exitCode}");
             }
 
             if (!File.Exists(output))
@@ -73,7 +96,7 @@ namespace ClipShare.Services
                 throw new Exception("FFmpeg completed but output file was not created");
             }
 
-            Console.WriteLine($"[ClipShare] Clip created successfully: {output}");
+            _logger.LogInformation("[ClipShare] Clip created successfully: {Output}", output);
         }
     }
 }

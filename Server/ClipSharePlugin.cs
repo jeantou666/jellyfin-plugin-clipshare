@@ -1,14 +1,16 @@
 using System;
 using System.Collections.Generic;
 using ClipShare.Configuration;
+using ClipShare.Services;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ClipShare;
 
-public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages
+public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages, IPluginServiceRegistrator
 {
     public static ClipSharePlugin? Instance { get; private set; }
 
@@ -32,4 +34,12 @@ public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages
             EmbeddedResourcePath = $"{GetType().Namespace}.Web.index.html"
         }
     };
+
+    /// <summary>
+    /// Register services for dependency injection.
+    /// </summary>
+    public void RegisterServices(IServiceCollection serviceCollection)
+    {
+        serviceCollection.AddScoped<ClipGenerator>();
+    }
 }

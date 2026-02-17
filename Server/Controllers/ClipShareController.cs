@@ -7,6 +7,7 @@ using ClipShare.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 
 namespace ClipShare.Controllers
 {
@@ -18,7 +19,14 @@ namespace ClipShare.Controllers
         public static IEnumerable<ClipInfo> GetAllClips() => Clips.Values;
         public static void RemoveClip(string id) => Clips.TryRemove(id, out _);
 
-        private readonly ClipGenerator _generator = new();
+        private readonly ClipGenerator _generator;
+        private readonly ILogger<ClipShareController> _logger;
+
+        public ClipShareController(ClipGenerator generator, ILogger<ClipShareController> logger)
+        {
+            _generator = generator;
+            _logger = logger;
+        }
 
         private string GetClipFolder()
         {
@@ -28,6 +36,17 @@ namespace ClipShare.Controllers
             {
                 var clipFolder = Path.Combine(cachePath, "clipshare");
                 Directory.CreateDirectory(clipFolder);
+                _logger.LogInformation("Using cache directory: {Dir}", clipFolder);
+                return clipFolder;
+            }
+
+            // Try /var/cache/jellyfin
+            var varCache = "/var/cache/jellyfin";
+            if (Directory.Exists(varCache))
+            {
+                var clipFolder = Path.Combine(varCache, "clipshare");
+                Directory.CreateDirectory(clipFolder);
+                _logger.LogInformation("Using /var/cache/jellyfin: {Dir}", clipFolder);
                 return clipFolder;
             }
 
@@ -35,12 +54,16 @@ namespace ClipShare.Controllers
             var tempPath = Path.GetTempPath();
             var tempClipFolder = Path.Combine(tempPath, "jellyfin-clipshare");
             Directory.CreateDirectory(tempClipFolder);
+            _logger.LogInformation("Using temp directory: {Dir}", tempClipFolder);
             return tempClipFolder;
         }
 
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
+            _logger.LogInformation("Create clip request: ItemId={ItemId}, Start={Start}, End={End}", 
+                request.ItemId, request.StartSeconds, request.EndSeconds);
+
             // Use media path provided by client
             var mediaPath = request.MediaPath;
 
@@ -51,6 +74,7 @@ namespace ClipShare.Controllers
 
             if (!System.IO.File.Exists(mediaPath))
             {
+                _logger.LogError("Media file not found: {Path}", mediaPath);
                 return NotFound($"Media file not found: {mediaPath}");
             }
 
@@ -58,12 +82,15 @@ namespace ClipShare.Controllers
             var folder = GetClipFolder();
             var output = Path.Combine(folder, $"{id}.mp4");
 
+            _logger.LogInformation("Output path: {Output}", output);
+
             try
             {
                 await _generator.GenerateClip(mediaPath, output, request.StartSeconds, request.EndSeconds);
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Failed to generate clip");
                 return StatusCode(500, $"Failed to generate clip: {ex.Message}");
             }
 
@@ -79,6 +106,7 @@ namespace ClipShare.Controllers
             };
 
             var url = $"{Request.Scheme}://{Request.Host}/ClipShare/video/{id}";
+            _logger.LogInformation("Clip created: {Url}", url);
             return Ok(new { url });
         }
 
