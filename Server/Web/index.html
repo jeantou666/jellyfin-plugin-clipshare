@@ -9,11 +9,13 @@
             padding: 20px;
             background: #101010;
             color: #fff;
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
+            line-height: 1.6;
         }
         h1 { color: #00a4dc; margin-bottom: 10px; }
-        h2 { color: #00a4dc; margin-top: 30px; }
+        h2 { color: #00a4dc; margin-top: 30px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        h3 { color: #ccc; margin-top: 20px; }
         .section {
             background: #1a1a1a;
             padding: 20px;
@@ -34,6 +36,7 @@
             overflow-x: auto;
             font-family: monospace;
             font-size: 13px;
+            white-space: pre-wrap;
         }
         .success {
             background: #1a3a1a;
@@ -41,9 +44,15 @@
             padding: 15px;
             margin: 15px 0;
         }
+        .warning {
+            background: #3a2a1a;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+        }
         .info {
-            background: #2a2a00;
-            border-left: 4px solid #ffc107;
+            background: #1a2a3a;
+            border-left: 4px solid #2196f3;
             padding: 15px;
             margin: 15px 0;
         }
@@ -67,29 +76,104 @@
             border-radius: 4px;
         }
         a { color: #00a4dc; }
-        .status { display: inline-block; padding: 4px 12px; border-radius: 4px; margin-left: 10px; }
-        .status.active { background: #4caf50; }
-        .status.inactive { background: #f44336; }
+        .step {
+            display: flex;
+            margin: 15px 0;
+            align-items: flex-start;
+        }
+        .step-num {
+            background: #00a4dc;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            flex-shrink: 0;
+            font-weight: bold;
+        }
+        .step-content { flex: 1; }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            margin-left: 10px;
+        }
+        .badge.recommended { background: #4caf50; }
+        .badge.easy { background: #ff9800; }
     </style>
 </head>
 <body>
-    <h1>✂️ ClipShare <span id="version"></span></h1>
+    <h1>✂️ ClipShare</h1>
     <p>Create and share video clips directly from the Jellyfin player.</p>
 
     <div class="success">
-        <strong>✓ Plugin Active</strong> - The clip button (✂️) appears in the video player controls.<br>
-        <strong>Keyboard shortcut:</strong> Press <code>C</code> to start creating a clip.
+        <strong>✓ Plugin Installed</strong> - The server-side functionality is ready. Now configure script injection to enable the UI.
+    </div>
+
+    <div class="section">
+        <h2>🚀 Setup Script Injection</h2>
+        <p>Choose one of the following methods to load the ClipShare script:</p>
+
+        <h3>Method 1: JavaScript Injector Plugin <span class="badge recommended">Recommended</span></h3>
+        <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+                Install the <a href="https://github.com/n00bcodr/Jellyfin-JavaScript-Injector" target="_blank">JavaScript Injector</a> plugin.<br>
+                Add this repository to Jellyfin: <code>https://n00bcodr.github.io/jellyfin-plugin-repo/manifest.json</code>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+                Go to <strong>Dashboard > Plugins > JavaScript Injector</strong>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-content">
+                Add a new script with this code:
+                <pre id="injectorCode"></pre>
+                <button onclick="copyInjectorCode()">📋 Copy Code</button>
+            </div>
+        </div>
+
+        <h3>Method 2: Browser Console <span class="badge easy">Quick Test</span></h3>
+        <p>Open the browser console (F12) and paste:</p>
+        <pre id="consoleCode"></pre>
+        <button onclick="copyConsoleCode()">📋 Copy</button>
+        <p class="info" style="margin-top: 10px;"><strong>Note:</strong> This only works for the current session. Use Method 1 for permanent installation.</p>
+
+        <h3>Method 3: Tampermonkey</h3>
+        <p>Install <a href="https://www.tampermonkey.net/" target="_blank">Tampermonkey</a> extension, then:</p>
+        <button onclick="installUserscript()">📦 Download Userscript</button>
     </div>
 
     <div class="section">
         <h2>🎬 How to Use</h2>
-        <ol>
-            <li>Start playing a video in Jellyfin</li>
-            <li>Click the <strong>✂️ Clip</strong> button in the player controls (or press <code>C</code>)</li>
-            <li>Navigate to the <strong>start point</strong> and click the button</li>
-            <li>Navigate to the <strong>end point</strong> and click again</li>
-            <li>Click <strong>Create Clip</strong> to generate a shareable link</li>
-        </ol>
+        <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-content">Play any video in Jellyfin</div>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-content">Click the <strong>✂️ Clip</strong> button in player controls (or press <code>C</code>)</div>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-content">Navigate to start point, click button</div>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-content">Navigate to end point, click button</div>
+        </div>
+        <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-content">Click <strong>Create Clip</strong> and share the link!</div>
+        </div>
     </div>
 
     <div class="section">
@@ -104,14 +188,9 @@
     <div class="section">
         <h2>📋 Script Status</h2>
         <p>Script URL: <code id="scriptUrl"></code></p>
-        <p>Injection: <span id="injectionStatus" class="status"></span></p>
-        <button onclick="testScript()">Test Script Loading</button>
+        <button onclick="testScript()">Test Script</button>
         <button onclick="reloadScript()">Reload Script</button>
         <div id="testResult" style="margin-top: 10px;"></div>
-    </div>
-
-    <div class="info">
-        <strong>💡 Tip:</strong> If the clip button doesn't appear, try refreshing the page or manually loading the script using the browser console.
     </div>
 
     <script>
@@ -119,18 +198,31 @@
         const scriptUrl = baseUrl + '/ClipShare/script';
 
         document.getElementById('scriptUrl').textContent = scriptUrl;
-        document.getElementById('injectionStatus').textContent = 'Active';
-        document.getElementById('injectionStatus').className = 'status active';
 
-        // Check if script is already loaded
-        if (window.__clipshare_loaded) {
-            document.getElementById('injectionStatus').textContent = 'Loaded';
-        }
+        // Injector code
+        const injectorCode = `// ClipShare Auto-Loader
+var s=document.createElement('script');s.src='${scriptUrl}';document.head.appendChild(s);`;
+        document.getElementById('injectorCode').textContent = injectorCode;
+
+        // Console code
+        const consoleCode = `// Load ClipShare
+(function(){var s=document.createElement('script');s.src='${scriptUrl}';document.head.appendChild(s);})();`;
+        document.getElementById('consoleCode').textContent = consoleCode;
 
         // Load saved settings
         const savedHours = localStorage.getItem('clipshare_expireHours');
         if (savedHours) {
             document.getElementById('expireHours').value = savedHours;
+        }
+
+        function copyInjectorCode() {
+            navigator.clipboard.writeText(injectorCode);
+            alert('Copied! Paste this in JavaScript Injector plugin.');
+        }
+
+        function copyConsoleCode() {
+            navigator.clipboard.writeText(consoleCode);
+            alert('Copied! Paste in browser console (F12).');
         }
 
         function saveSettings() {
@@ -147,9 +239,9 @@
                 const resp = await fetch(scriptUrl);
                 if (resp.ok) {
                     const text = await resp.text();
-                    result.innerHTML = '<span style="color:#4caf50">✓ Script loaded successfully (' + text.length + ' bytes)</span>';
+                    result.innerHTML = '<span style="color:#4caf50">✓ Script OK (' + text.length + ' bytes)</span>';
                 } else {
-                    result.innerHTML = '<span style="color:#f44336">✗ Script returned status ' + resp.status + '</span>';
+                    result.innerHTML = '<span style="color:#f44336">✗ Error: HTTP ' + resp.status + '</span>';
                 }
             } catch (e) {
                 result.innerHTML = '<span style="color:#f44336">✗ Error: ' + e.message + '</span>';
@@ -157,24 +249,45 @@
         }
 
         function reloadScript() {
-            // Remove old script if exists
+            window.__clipshare_loaded = false;
             const oldScript = document.querySelector('script[src*="/ClipShare/script"]');
             if (oldScript) oldScript.remove();
 
-            // Reset loaded flag
-            window.__clipshare_loaded = false;
-
-            // Load fresh script
             const s = document.createElement('script');
             s.src = scriptUrl + '?t=' + Date.now();
             s.onload = () => {
                 document.getElementById('testResult').innerHTML = '<span style="color:#4caf50">✓ Script reloaded!</span>';
-                document.getElementById('injectionStatus').textContent = 'Loaded';
             };
             s.onerror = () => {
-                document.getElementById('testResult').innerHTML = '<span style="color:#f44336">✗ Failed to load script</span>';
+                document.getElementById('testResult').innerHTML = '<span style="color:#f44336">✗ Failed to load</span>';
             };
             document.head.appendChild(s);
+        }
+
+        function installUserscript() {
+            const userscript = `// ==UserScript==
+// @name         ClipShare for Jellyfin
+// @namespace    http://tampermonkey.net/
+// @version      1.0
+// @description  Create clips from Jellyfin video player
+// @match        ${baseUrl}/*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+    var s = document.createElement('script');
+    s.src = '${scriptUrl}';
+    document.head.appendChild(s);
+})();`;
+
+            const blob = new Blob([userscript], { type: 'text/javascript' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'clipshare.user.js';
+            a.click();
+            URL.revokeObjectURL(url);
         }
     </script>
 </body>
