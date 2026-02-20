@@ -12,6 +12,9 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        ref: main
+        fetch-depth: 0
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -70,13 +73,13 @@ jobs:
         echo "Updated manifest.json:"
         cat repository/manifest.json
 
-    - name: Commit updated manifest
+    - name: Commit and push updated manifest
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add repository/manifest.json
         git commit -m "Update manifest for v${{ env.VERSION }}" || echo "No changes to commit"
-        git push
+        git push origin main
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
