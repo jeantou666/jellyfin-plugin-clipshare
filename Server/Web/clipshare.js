@@ -8,9 +8,9 @@
     if (window.__clipshare_loaded) return;
     window.__clipshare_loaded = true;
 
-    console.log('[ClipShare] ====== LOADED v1.6 ======');
+    console.log('[ClipShare] ====== LOADED v1.7 ======');
 
-    // State - persisted across navigation
+    // State
     let currentItemId = null;
     let currentMediaPath = null;
     let currentVideoName = null;
@@ -18,9 +18,8 @@
     let endTime = null;
     let clipButton = null;
     let selectionOverlay = null;
-    let lastHash = window.location.hash;
-    let idFetchInProgress = false;
-    let lastSuccessfulId = null;  // Backup ID
+    let lastVideoSrc = null;
+    let isFetchingId = false;
 
     const CONFIG = { defaultExpireHours: 72, buttonId: 'clipshare-btn', overlayId: 'clipshare-overlay' };
 
@@ -39,27 +38,14 @@
      */
     function getApiKey() {
         try {
-            // Try localStorage first
             const creds = localStorage.getItem('jellyfin_credentials');
             if (creds) {
                 const parsed = JSON.parse(creds);
-                if (parsed.Servers?.[0]?.AccessToken) {
-                    console.log('[ClipShare] API key from localStorage');
-                    return parsed.Servers[0].AccessToken;
-                }
+                if (parsed.Servers?.[0]?.AccessToken) return parsed.Servers[0].AccessToken;
             }
-            // Try ApiClient
-            if (window.ApiClient?.accessToken) {
-                console.log('[ClipShare] API key from ApiClient.accessToken');
-                return window.ApiClient.accessToken;
-            }
-            if (window.ApiClient?._serverInfo?.AccessToken) {
-                console.log('[ClipShare] API key from ApiClient._serverInfo');
-                return window.ApiClient._serverInfo.AccessToken;
-            }
-        } catch (e) {
-            console.error('[ClipShare] getApiKey error:', e);
-        }
+            if (window.ApiClient?.accessToken) return window.ApiClient.accessToken;
+            if (window.ApiClient?._serverInfo?.AccessToken) return window.ApiClient._serverInfo.AccessToken;
+        } catch (e) {}
         return null;
     }
 
@@ -80,120 +66,79 @@
     }
 
     /**
-     * Get video ID from Sessions API (most reliable)
+     * Get video ID from Sessions API
      */
     async function fetchCurrentPlayingItem() {
-        if (idFetchInProgress) {
-            console.log('[ClipShare] ID fetch already in progress, waiting...');
-            await new Promise(r => setTimeout(r, 500));
-        }
-        
-        idFetchInProgress = true;
-        
+        if (isFetchingId) return null;
+        isFetchingId = true;
+
         try {
             const apiKey = getApiKey();
-            if (!apiKey) {
-                console.log('[ClipShare] No API key for Sessions');
-                return null;
-            }
+            if (!apiKey) return null;
 
-            console.log('[ClipShare] Fetching Sessions...');
-            const resp = await fetch('/Sessions', { 
+            console.log('[ClipShare] Fetching Sessions API...');
+            const resp = await fetch('/Sessions', {
                 headers: { 'X-Emby-Token': apiKey },
                 credentials: 'include'
             });
-            
-            if (!resp.ok) {
-                console.log('[ClipShare] Sessions response:', resp.status);
-                return null;
-            }
+
+            if (!resp.ok) return null;
 
             const sessions = await resp.json();
-            console.log('[ClipShare] Sessions:', sessions.length, 'sessions');
-
             const userId = getUserId();
-            console.log('[ClipShare] Current userId:', userId);
 
-            // Find session with NowPlayingItem - prioritize current user
+            // Find session with NowPlayingItem
             let bestMatch = null;
-            
             for (const session of sessions) {
                 if (session.NowPlayingItem) {
-                    const rawId = session.NowPlayingItem.Id;
-                    const id = formatGuid(rawId);
+                    const id = formatGuid(session.NowPlayingItem.Id);
                     const name = session.NowPlayingItem.Name || 'Unknown';
-                    
-                    console.log('[ClipShare] Session has NowPlayingItem:', name, 'ID:', id, 
-                                'UserId match:', session.UserId === userId);
-                    
-                    // Prioritize current user's session
+                    console.log('[ClipShare] Session:', name, id, 'UserId match:', session.UserId === userId);
+
                     if (session.UserId === userId || !bestMatch) {
-                        bestMatch = { id, name, session };
+                        bestMatch = { id, name };
                     }
                 }
             }
 
-            if (bestMatch) {
-                console.log('[ClipShare] Best match:', bestMatch.name, bestMatch.id);
-                return bestMatch;
-            }
-
-            console.log('[ClipShare] No NowPlayingItem found in sessions');
+            return bestMatch;
         } catch (e) {
-            console.error('[ClipShare] Sessions API error:', e);
+            console.error('[ClipShare] fetchCurrentPlayingItem error:', e);
         } finally {
-            idFetchInProgress = false;
+            isFetchingId = false;
         }
         return null;
     }
 
     /**
-     * Get video ID synchronously (fallbacks)
+     * Get video ID from URL
      */
-    function getCurrentVideoIdSync() {
-        // URL patterns - try multiple formats
+    function getIdFromUrl() {
         const url = window.location.href;
         const hash = window.location.hash;
-        
-        console.log('[ClipShare] Checking URL for ID:', url);
-        console.log('[ClipShare] Hash:', hash);
-        
-        // Pattern 1: Query parameter
-        let match = url.match(/[?&]id=([a-f0-9-]+)/i);
-        if (match) {
-            console.log('[ClipShare] Found ID in query param:', match[1]);
-            return formatGuid(match[1]);
-        }
-        
-        // Pattern 2: Hash-based URL like #/video?id=xxx
-        match = hash.match(/id=([a-f0-9-]+)/i);
-        if (match) {
-            console.log('[ClipShare] Found ID in hash:', match[1]);
-            return formatGuid(match[1]);
-        }
-        
-        // Pattern 3: /video/ID or /items/ID in hash
-        match = hash.match(/\/(video|items)\/([a-f0-9-]+)/i);
-        if (match) {
-            console.log('[ClipShare] Found ID in hash path:', match[2]);
-            return formatGuid(match[2]);
+
+        // Try various patterns
+        const patterns = [
+            /[?&]id=([a-f0-9-]+)/i,
+            /id=([a-f0-9-]+)/i,
+            /\/video\/([a-f0-9-]+)/i,
+            /\/items\/([a-f0-9-]+)/i
+        ];
+
+        for (const p of patterns) {
+            const m = (url.match(p) || hash.match(p));
+            if (m) return formatGuid(m[1]);
         }
 
-        // Pattern 4: Network requests - look for video stream URLs
+        // Check network resources
         try {
             const resources = performance.getEntriesByType('resource');
             for (let i = resources.length - 1; i >= 0; i--) {
-                const name = resources[i].name;
-                // Match video stream URLs
-                const m = name.match(/\/videos\/([a-f0-9]{8}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{12})/i);
-                if (m) {
-                    console.log('[ClipShare] Found ID in network resource:', m[1]);
-                    return formatGuid(m[1]);
-                }
+                const m = resources[i].name.match(/\/videos\/([a-f0-9]{8}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{4}-?[a-f0-9]{12})/i);
+                if (m) return formatGuid(m[1]);
             }
         } catch (e) {}
 
-        console.log('[ClipShare] No ID found sync');
         return null;
     }
 
@@ -205,27 +150,17 @@
             const apiKey = getApiKey();
             if (!apiKey || !itemId) return null;
 
-            console.log('[ClipShare] Fetching item info for:', itemId);
             const resp = await fetch(`/Items?Ids=${itemId}&Fields=Path,Name`, {
                 headers: { 'X-Emby-Token': apiKey },
                 credentials: 'include'
             });
-            
-            if (!resp.ok) {
-                console.log('[ClipShare] Items response:', resp.status);
-                return null;
-            }
+
+            if (!resp.ok) return null;
 
             const data = await resp.json();
-            console.log('[ClipShare] Items response:', data);
-            
-            if (data.Items?.[0]) {
-                const item = data.Items[0];
-                if (item.Path) {
-                    console.log('[ClipShare] Media path:', item.Path);
-                    currentVideoName = item.Name;
-                    return item.Path;
-                }
+            if (data.Items?.[0]?.Path) {
+                currentVideoName = data.Items[0].Name;
+                return data.Items[0].Path;
             }
         } catch (e) {
             console.error('[ClipShare] fetchMediaPath error:', e);
@@ -234,48 +169,107 @@
     }
 
     /**
-     * Store ID persistently
+     * Store video info in session
      */
     function storeVideoInfo(id, path, name) {
         try {
-            const info = { id, path, name, timestamp: Date.now() };
-            sessionStorage.setItem('clipshare_current_video', JSON.stringify(info));
-            lastSuccessfulId = id;
-            console.log('[ClipShare] Stored video info:', info);
+            sessionStorage.setItem('clipshare_current_video', JSON.stringify({
+                id, path, name, timestamp: Date.now()
+            }));
         } catch (e) {}
     }
 
     /**
-     * Retrieve stored video info
+     * Get stored video info
      */
     function getStoredVideoInfo() {
         try {
             const stored = sessionStorage.getItem('clipshare_current_video');
             if (stored) {
                 const info = JSON.parse(stored);
-                // Valid for 30 minutes
-                if (Date.now() - info.timestamp < 30 * 60 * 1000) {
-                    return info;
-                }
+                if (Date.now() - info.timestamp < 30 * 60 * 1000) return info;
             }
         } catch (e) {}
         return null;
     }
 
     /**
-     * Check if video page
+     * Clear stored video info
+     */
+    function clearStoredVideoInfo() {
+        try {
+            sessionStorage.removeItem('clipshare_current_video');
+        } catch (e) {}
+    }
+
+    /**
+     * Check if on video page
      */
     function isVideoPage() {
         const hash = window.location.hash || '';
-        if (hash.includes('video') || hash.includes('play')) return true;
-        if (document.querySelector('video')?.readyState >= 1) return true;
-        if (document.querySelector('.videoPlayerContainer, .htmlVideoPlayer')) return true;
+        return hash.includes('video') || hash.includes('play') || document.querySelector('video')?.readyState >= 1;
+    }
+
+    /**
+     * Update video info - call this when video changes
+     */
+    async function updateVideoInfo(force = false) {
+        if (isFetchingId && !force) return;
+
+        console.log('[ClipShare] updateVideoInfo called, force=', force);
+
+        // Get ID from URL first
+        let id = getIdFromUrl();
+
+        // If no URL ID, try Sessions API
+        if (!id) {
+            const result = await fetchCurrentPlayingItem();
+            if (result) id = result.id;
+        }
+
+        if (id && (id !== currentItemId || force)) {
+            console.log('[ClipShare] New video detected! ID:', id, '(was:', currentItemId + ')');
+
+            currentItemId = id;
+            currentMediaPath = null;
+            startTime = null;
+            endTime = null;
+            hideOverlay();
+            updateButtonState();
+
+            // Fetch path
+            const path = await fetchMediaPath(id);
+            if (path) {
+                currentMediaPath = path;
+                storeVideoInfo(id, path, currentVideoName);
+                console.log('[ClipShare] Video info updated:', currentVideoName, currentItemId, currentMediaPath);
+            }
+        }
+
+        return id;
+    }
+
+    /**
+     * Check if video element changed (new video src)
+     */
+    function checkVideoChange() {
+        const video = document.querySelector('video');
+        if (!video) return false;
+
+        const src = video.currentSrc || video.src;
+        if (src && src !== lastVideoSrc) {
+            console.log('[ClipShare] Video src changed:', lastVideoSrc, '->', src);
+            lastVideoSrc = src;
+            currentItemId = null;
+            currentMediaPath = null;
+            clearStoredVideoInfo();
+            return true;
+        }
         return false;
     }
 
     function resetForNewVideo() {
         startTime = endTime = null;
-        currentMediaPath = null;
         hideOverlay();
         updateButtonState();
     }
@@ -326,7 +320,6 @@
             return true;
         }
 
-        // Fallback
         const vc = document.querySelector('.videoPlayerContainer') || video.parentElement?.parentElement;
         if (vc) {
             clipButton.style.cssText = 'position:absolute;bottom:90px;right:20px;z-index:99999;background:#00a4dc!important;color:white!important;border:none!important;padding:12px!important;border-radius:50%!important;cursor:pointer!important;';
@@ -402,100 +395,72 @@
     async function createClip() {
         if (!startTime || !endTime) return;
         const expire = parseInt(document.getElementById('clipshare-expire')?.value) || CONFIG.defaultExpireHours;
-        updateOverlay('<strong style="font-size:1.2em">⏳ Création...</strong><br><br>Recherche de la vidéo...');
+        updateOverlay('<strong style="font-size:1.2em">⏳ Création...</strong><br><br>Récupération des infos vidéo...');
 
         try {
             console.log('[ClipShare] ========== CREATE CLIP ==========');
-            console.log('[ClipShare] currentItemId:', currentItemId);
-            console.log('[ClipShare] lastSuccessfulId:', lastSuccessfulId);
 
-            // Try to get ID from multiple sources
-            let id = null;
-            let mediaPath = null;
+            // Force refresh video info before creating clip
+            await updateVideoInfo(true);
 
-            // 1. Try stored info first (most reliable if we captured it during playback)
-            const stored = getStoredVideoInfo();
-            if (stored?.id) {
-                console.log('[ClipShare] Using stored ID:', stored.id);
-                id = stored.id;
-                mediaPath = stored.path;
-            }
+            let id = currentItemId;
+            let mediaPath = currentMediaPath;
 
-            // 2. Try currentItemId
-            if (!id && currentItemId) {
-                console.log('[ClipShare] Using currentItemId:', currentItemId);
-                id = currentItemId;
-            }
-
-            // 3. Try sync detection
-            if (!id) {
-                id = getCurrentVideoIdSync();
-                if (id) console.log('[ClipShare] Found ID via sync:', id);
-            }
-
-            // 4. Try Sessions API
-            if (!id) {
-                updateOverlay('<strong style="font-size:1.2em">⏳ Création...</strong><br><br>Recherche via Sessions API...');
-                const result = await fetchCurrentPlayingItem();
-                if (result) {
-                    id = result.id;
-                    console.log('[ClipShare] Found ID via Sessions:', id);
+            // Fallback to stored info
+            if (!id || !mediaPath) {
+                const stored = getStoredVideoInfo();
+                if (stored) {
+                    if (!id) id = stored.id;
+                    if (!mediaPath) mediaPath = stored.path;
                 }
             }
 
+            // Last resort: fetch from Sessions
             if (!id) {
-                throw new Error('Impossible de trouver l\'ID vidéo. Essayez de rafraîchir la page et de lancer la vidéo à nouveau.');
+                const result = await fetchCurrentPlayingItem();
+                if (result) id = result.id;
+            }
+
+            if (!id) {
+                throw new Error('Impossible de trouver l\'ID vidéo. Rafraîchissez la page.');
+            }
+
+            if (!mediaPath) {
+                mediaPath = await fetchMediaPath(id);
+            }
+
+            if (!mediaPath) {
+                throw new Error('Impossible de trouver le chemin du fichier.');
             }
 
             currentItemId = id;
-            console.log('[ClipShare] Final ID:', currentItemId);
-
-            // Get media path if not already known
-            if (!mediaPath) {
-                updateOverlay('<strong style="font-size:1.2em">⏳ Création...</strong><br><br>Récupération du chemin...');
-                mediaPath = await fetchMediaPath(currentItemId);
-            }
-
-            if (!mediaPath) {
-                throw new Error('Impossible de trouver le chemin du fichier média. Vérifiez que vous avez les permissions nécessaires.');
-            }
-            
             currentMediaPath = mediaPath;
-            console.log('[ClipShare] Media path:', currentMediaPath);
+            storeVideoInfo(id, mediaPath, currentVideoName);
 
-            // Store for future use
-            storeVideoInfo(currentItemId, currentMediaPath, currentVideoName);
+            console.log('[ClipShare] Creating clip for:', currentVideoName, 'ID:', id, 'Path:', mediaPath);
 
-            updateOverlay('<strong style="font-size:1.2em">⏳ Création...</strong><br><br>Génération du clip en cours...');
-
-            // Send request
-            const requestBody = {
-                itemId: currentItemId,
-                mediaPath: currentMediaPath,
-                startSeconds: startTime,
-                endSeconds: endTime,
-                expireHours: expire
-            };
-            
-            console.log('[ClipShare] Sending request:', requestBody);
+            updateOverlay('<strong style="font-size:1.2em">⏳ Création...</strong><br><br>Génération du clip...');
 
             const resp = await fetch('/ClipShare/Create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify({
+                    itemId: id,
+                    mediaPath: mediaPath,
+                    startSeconds: startTime,
+                    endSeconds: endTime,
+                    expireHours: expire
+                })
             });
 
-            console.log('[ClipShare] Response status:', resp.status);
-
             const responseText = await resp.text();
-            console.log('[ClipShare] Response body:', responseText);
+            console.log('[ClipShare] Response:', resp.status, responseText);
 
             if (!resp.ok) {
                 throw new Error(responseText || 'Erreur serveur');
             }
 
             const data = JSON.parse(responseText);
-            console.log('[ClipShare] Success:', data);
             showSuccess(data.url);
         } catch (err) {
             console.error('[ClipShare] createClip error:', err);
@@ -510,7 +475,6 @@
         });
         document.getElementById('clipshare-close-ok')?.addEventListener('click', resetSelection);
         document.getElementById('clipshare-url').onclick = function() { this.select(); };
-        setTimeout(resetSelection, 20000);
     }
 
     function showError(msg) {
@@ -539,96 +503,80 @@
     }
 
     /**
-     * Update video info proactively
-     */
-    async function updateVideoInfo() {
-        const video = document.querySelector('video');
-        if (!video) return;
-
-        // Try to get ID
-        let id = getCurrentVideoIdSync();
-        let result = null;
-        
-        if (!id) {
-            result = await fetchCurrentPlayingItem();
-            if (result) id = result.id;
-        }
-
-        if (id && id !== currentItemId) {
-            console.log('[ClipShare] Updated video ID:', id);
-            currentItemId = id;
-            
-            // Get path and store
-            const path = await fetchMediaPath(id);
-            if (path) {
-                currentMediaPath = path;
-                storeVideoInfo(id, path, currentVideoName);
-            }
-            
-            resetForNewVideo();
-        }
-    }
-
-    /**
-     * Main initialization
-     */
-    async function initUI() {
-        console.log('[ClipShare] initUI');
-
-        const video = document.querySelector('video');
-        if (!video) return;
-
-        // Update video info
-        await updateVideoInfo();
-
-        if (!document.getElementById(CONFIG.buttonId)) {
-            createClipButton();
-        }
-    }
-
-    /**
-     * Main loop
+     * Main loop - check for video changes
      */
     async function mainLoop() {
-        // Hash change detection
-        if (window.location.hash !== lastHash) {
-            console.log('[ClipShare] Hash changed from', lastHash, 'to', window.location.hash);
-            lastHash = window.location.hash;
-            // Don't reset ID on hash change - keep the stored one
-            document.getElementById(CONFIG.buttonId)?.remove();
-        }
+        // Check if video src changed
+        const videoChanged = checkVideoChange();
 
-        // Video page check
-        const video = document.querySelector('video');
-        if (video && isVideoPage()) {
-            // Periodically update video info
-            if (!currentItemId && !idFetchInProgress) {
+        // Check if on video page
+        if (isVideoPage()) {
+            // If video changed or no ID, fetch new ID
+            if (videoChanged || !currentItemId) {
+                console.log('[ClipShare] Video changed or no ID, fetching...');
                 await updateVideoInfo();
             }
+
+            // Ensure button exists
             if (!document.getElementById(CONFIG.buttonId)) {
                 createClipButton();
             }
         }
     }
 
-    function init() {
-        console.log('[ClipShare] ====== INIT ======');
-        document.addEventListener('keydown', handleKeyboard);
-        setInterval(mainLoop, 1500);
-        setTimeout(initUI, 100);
-        setTimeout(initUI, 1000);
-        setTimeout(initUI, 3000);
-        
-        window.addEventListener('hashchange', () => {
-            // Don't reset ID, just reinit UI
-            setTimeout(initUI, 500);
-        });
-        
-        // Listen for video events
-        document.addEventListener('play', () => {
-            console.log('[ClipShare] Video play event');
-            setTimeout(updateVideoInfo, 500);
+    /**
+     * Setup video event listeners
+     */
+    function setupVideoListeners() {
+        // Listen for video events on document (event delegation)
+        document.addEventListener('play', async (e) => {
+            if (e.target.tagName === 'VIDEO') {
+                console.log('[ClipShare] Video play event');
+                currentItemId = null;
+                currentMediaPath = null;
+                lastVideoSrc = null;
+                clearStoredVideoInfo();
+                await updateVideoInfo();
+            }
         }, true);
+
+        document.addEventListener('loadedmetadata', async (e) => {
+            if (e.target.tagName === 'VIDEO') {
+                console.log('[ClipShare] Video loadedmetadata event');
+                if (!currentItemId) {
+                    await updateVideoInfo();
+                }
+            }
+        }, true);
+
+        // Hash change
+        window.addEventListener('hashchange', async () => {
+            console.log('[ClipShare] Hash changed to:', window.location.hash);
+            currentItemId = null;
+            currentMediaPath = null;
+            lastVideoSrc = null;
+            clearStoredVideoInfo();
+            document.getElementById(CONFIG.buttonId)?.remove();
+            setTimeout(async () => {
+                await updateVideoInfo();
+            }, 500);
+        });
+    }
+
+    function init() {
+        console.log('[ClipShare] ====== INIT v1.7 ======');
+        document.addEventListener('keydown', handleKeyboard);
+
+        // Setup video change detection
+        setupVideoListeners();
+
+        // Main loop
+        setInterval(mainLoop, 2000);
+
+        // Initial setup with delays to wait for player
+        setTimeout(() => { updateVideoInfo(); createClipButton(); }, 500);
+        setTimeout(() => { updateVideoInfo(); createClipButton(); }, 2000);
+        setTimeout(() => { updateVideoInfo(); createClipButton(); }, 5000);
     }
 
     if (document.readyState === 'loading') {
@@ -638,17 +586,19 @@
     }
 
     // Debug helpers
-    window.__clipshare_init = initUI;
+    window.__clipshare_init = () => { updateVideoInfo(); createClipButton(); };
     window.__clipshare_getId = () => currentItemId;
     window.__clipshare_getPath = () => currentMediaPath;
+    window.__clipshare_getName = () => currentVideoName;
     window.__clipshare_fetchId = fetchCurrentPlayingItem;
+    window.__clipshare_update = () => updateVideoInfo(true);
     window.__clipshare_debug = () => ({
         currentItemId,
         currentMediaPath,
         currentVideoName,
         startTime,
         endTime,
-        lastSuccessfulId,
+        lastVideoSrc,
         storedInfo: getStoredVideoInfo()
     });
 
