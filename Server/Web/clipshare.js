@@ -23,7 +23,7 @@
     let clipButton = null;
     let selectionOverlay = null;
     let lastUrl = window.location.href;
-    let isInitialized = false;
+    let lastVideoSrc = null;
 
     // Configuration
     const CONFIG = {
@@ -62,39 +62,69 @@
     }
 
     /**
-     * Get video ID from URL (most reliable)
+     * Get video ID - prioritize most recent/current video
      */
-    function getVideoIdFromUrl() {
-        // Try URL path patterns
-        const patterns = [
-            /\/video\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i,
+    function getCurrentVideoId() {
+        // Method 1: From URL (most reliable for current page)
+        const url = window.location.href;
+        const urlPatterns = [
             /id=([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i,
+            /\/video\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i,
             /\/play\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i
         ];
 
-        for (const pattern of patterns) {
-            const match = window.location.href.match(pattern);
+        for (const pattern of urlPatterns) {
+            const match = url.match(pattern);
             if (match) {
+                console.log('[ClipShare] Got ID from URL:', match[1]);
                 return match[1];
             }
         }
 
-        // Try from performance API (network requests)
+        // Method 2: From video element src (most recent)
+        const video = document.querySelector('video');
+        if (video && video.src) {
+            const match = video.src.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+            if (match) {
+                console.log('[ClipShare] Got ID from video.src:', match[1]);
+                return match[1];
+            }
+        }
+
+        // Method 3: From most recent network request (LAST entry, not first)
         try {
             const resources = performance.getEntriesByType('resource');
-            for (const r of resources) {
+            // Iterate backwards to find the most recent video request
+            for (let i = resources.length - 1; i >= 0; i--) {
+                const r = resources[i];
                 if (r.name && r.name.includes('/videos/')) {
                     const match = r.name.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-                    if (match) return match[1];
+                    if (match) {
+                        console.log('[ClipShare] Got ID from most recent resource:', match[1]);
+                        return match[1];
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[ClipShare] Performance API error:', e);
+        }
+
+        // Method 4: From Jellyfin playback manager
+        try {
+            if (window.playbackManager) {
+                const player = window.playbackManager.getCurrentPlayer();
+                if (player && player.currentItem) {
+                    console.log('[ClipShare] Got ID from playbackManager:', player.currentItem.Id);
+                    return player.currentItem.Id;
                 }
             }
         } catch (e) {}
 
-        // Try from Jellyfin's global state
+        // Method 5: From Jellyfin API client
         try {
-            if (window.ApiClient) {
-                const lastPlayback = window.ApiClient.lastPlaybackItem;
-                if (lastPlayback?.Id) return lastPlayback.Id;
+            if (window.ApiClient && window.ApiClient._currentItem) {
+                console.log('[ClipShare] Got ID from ApiClient:', window.ApiClient._currentItem.Id);
+                return window.ApiClient._currentItem.Id;
             }
         } catch (e) {}
 
@@ -144,6 +174,7 @@
         return video && (
             url.includes('/video') ||
             url.includes('/play') ||
+            url.includes('id=') ||
             document.querySelector('.videoPlayerContainer') ||
             document.querySelector('.htmlVideoPlayer')
         );
@@ -169,12 +200,10 @@
         if (!clipButton) return;
 
         if (startTime !== null && endTime === null) {
-            // Selecting end time
             clipButton.innerHTML = '<span class="material-icons" style="font-size: 1.4em;">stop</span>';
             clipButton.style.color = '#ff9800';
             clipButton.title = 'Définir la fin du clip';
         } else {
-            // Default state
             clipButton.innerHTML = '<span class="material-icons" style="font-size: 1.4em;">content_cut</span>';
             clipButton.style.color = '';
             clipButton.title = 'Créer un clip (C)';
@@ -186,13 +215,9 @@
      */
     function cleanupUI() {
         const existingBtn = document.getElementById(CONFIG.buttonId);
-        if (existingBtn) {
-            existingBtn.remove();
-        }
+        if (existingBtn) existingBtn.remove();
         const existingOverlay = document.getElementById(CONFIG.overlayId);
-        if (existingOverlay) {
-            existingOverlay.remove();
-        }
+        if (existingOverlay) existingOverlay.remove();
         clipButton = null;
         selectionOverlay = null;
     }
@@ -203,9 +228,7 @@
     function createClipButton() {
         // Remove existing button first
         const existingBtn = document.getElementById(CONFIG.buttonId);
-        if (existingBtn) {
-            existingBtn.remove();
-        }
+        if (existingBtn) existingBtn.remove();
 
         // Find the video player controls container
         const selectors = [
@@ -233,7 +256,7 @@
         clipButton.title = 'Créer un clip (C)';
         clipButton.className = 'paper-icon-button-light';
 
-        // Match Jellyfin button style
+        // Match Jellyfin button style - use !important to override any conflicts
         clipButton.style.cssText = `
             background: transparent !important;
             color: inherit !important;
@@ -251,21 +274,24 @@
             vertical-align: middle !important;
             outline: none !important;
             box-shadow: none !important;
+            pointer-events: auto !important;
         `;
 
         // Use addEventListener instead of onclick
         clipButton.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
+            e.stopImmediatePropagation();
+            console.log('[ClipShare] Button clicked');
             toggleSelectionMode();
-        });
+        }, true);
 
         clipButton.addEventListener('mouseenter', function() {
-            this.style.background = 'rgba(255, 255, 255, 0.1)';
+            this.style.background = 'rgba(255, 255, 255, 0.1) !important';
         });
 
         clipButton.addEventListener('mouseleave', function() {
-            this.style.background = 'transparent';
+            this.style.background = 'transparent !important';
         });
 
         if (controlsContainer) {
@@ -278,38 +304,38 @@
                 controlsContainer.appendChild(clipButton);
             }
             console.log('[ClipShare] Button added to player controls');
-        } else {
-            // Fallback: position relative to video container
-            const videoContainer = document.querySelector('.videoPlayerContainer') ||
-                                   document.querySelector('.htmlVideoPlayer')?.parentElement ||
-                                   document.querySelector('video')?.parentElement;
-            if (videoContainer) {
-                videoContainer.style.position = 'relative';
-                clipButton.style.cssText = `
-                    position: absolute;
-                    bottom: 80px;
-                    right: 20px;
-                    z-index: 99999;
-                    background: #00a4dc !important;
-                    color: white !important;
-                    border: none !important;
-                    padding: 12px !important;
-                    border-radius: 50% !important;
-                    cursor: pointer !important;
-                    font-size: 18px !important;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-                    outline: none !important;
-                `;
-                videoContainer.appendChild(clipButton);
-                console.log('[ClipShare] Button added to video container');
-            } else {
-                console.warn('[ClipShare] Could not find a container for button');
-                return false;
-            }
+            return true;
         }
 
-        createSelectionOverlay();
-        return true;
+        // Fallback: position relative to video container
+        const videoContainer = document.querySelector('.videoPlayerContainer') ||
+                               document.querySelector('.htmlVideoPlayer')?.parentElement ||
+                               document.querySelector('video')?.parentElement?.parentElement;
+        if (videoContainer) {
+            videoContainer.style.position = 'relative';
+            clipButton.style.cssText = `
+                position: absolute;
+                bottom: 80px;
+                right: 20px;
+                z-index: 99999;
+                background: #00a4dc !important;
+                color: white !important;
+                border: none !important;
+                padding: 12px !important;
+                border-radius: 50% !important;
+                cursor: pointer !important;
+                font-size: 18px !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+                outline: none !important;
+                pointer-events: auto !important;
+            `;
+            videoContainer.appendChild(clipButton);
+            console.log('[ClipShare] Button added to video container (fallback)');
+            return true;
+        }
+
+        console.warn('[ClipShare] Could not find a container for button');
+        return false;
     }
 
     /**
@@ -488,7 +514,7 @@
 
         try {
             // Get video ID
-            const videoId = getVideoIdFromUrl();
+            const videoId = getCurrentVideoId();
             if (!videoId) {
                 throw new Error('ID vidéo non trouvé. Rafraîchissez la page.');
             }
@@ -635,7 +661,8 @@
      * Main initialization - called when video page is detected
      */
     function initUI() {
-        const videoId = getVideoIdFromUrl();
+        const videoId = getCurrentVideoId();
+        console.log('[ClipShare] initUI - current video ID:', videoId, 'stored ID:', currentItemId);
 
         // Check if this is a new video
         if (videoId && videoId !== currentItemId) {
@@ -657,45 +684,65 @@
      * URL change detection
      */
     function checkUrlChange() {
-        if (window.location.href !== lastUrl) {
-            console.log('[ClipShare] URL changed:', window.location.href);
-            lastUrl = window.location.href;
+        const currentUrl = window.location.href;
+        if (currentUrl !== lastUrl) {
+            console.log('[ClipShare] URL changed from:', lastUrl, 'to:', currentUrl);
+            lastUrl = currentUrl;
 
-            // Reset state for new page
+            // Reset video ID when URL changes to force re-detection
             currentItemId = null;
             currentMediaPath = null;
             resetForNewVideo();
+            cleanupUI();
 
             // Check if we're on a video page
             if (isVideoPage()) {
-                setTimeout(initUI, 500); // Small delay for DOM to settle
-            } else {
-                cleanupUI();
+                setTimeout(initUI, 500);
             }
         }
     }
 
     /**
-     * Main observer - watches for video player and URL changes
+     * Video src change detection
+     */
+    function checkVideoChange() {
+        const video = document.querySelector('video');
+        if (video) {
+            const src = video.currentSrc || video.src;
+            if (src && src !== lastVideoSrc) {
+                console.log('[ClipShare] Video src changed');
+                lastVideoSrc = src;
+
+                // Re-detect video ID
+                const newId = getCurrentVideoId();
+                if (newId && newId !== currentItemId) {
+                    console.log('[ClipShare] New video via src:', newId);
+                    currentItemId = newId;
+                    currentMediaPath = null;
+                    resetForNewVideo();
+                }
+            }
+        }
+    }
+
+    /**
+     * Main observer
      */
     function startObserver() {
         // Watch for URL changes (Jellyfin is SPA)
         setInterval(checkUrlChange, 500);
 
-        // Watch for DOM changes (video player appearing)
+        // Watch for video element changes
+        setInterval(checkVideoChange, 1000);
+
+        // Watch for DOM changes
         const observer = new MutationObserver((mutations) => {
             const video = document.querySelector('video');
 
             if (video && isVideoPage()) {
-                // Check for new video ID
-                const newVideoId = getVideoIdFromUrl();
-                if (newVideoId && newVideoId !== currentItemId) {
-                    console.log('[ClipShare] Video changed via DOM observer');
-                    initUI();
-                }
-
                 // Ensure button exists
                 if (!document.getElementById(CONFIG.buttonId)) {
+                    console.log('[ClipShare] DOM change detected, initializing UI');
                     initUI();
                 }
             }
@@ -714,6 +761,7 @@
      */
     function init() {
         console.log('[ClipShare] Initializing...');
+        console.log('[ClipShare] Current URL:', window.location.href);
 
         // Add keyboard listener
         document.addEventListener('keydown', handleKeyboard);
@@ -723,7 +771,10 @@
 
         // Initial check
         if (isVideoPage()) {
+            console.log('[ClipShare] Video page detected, initializing UI');
             setTimeout(initUI, 500);
+        } else {
+            console.log('[ClipShare] Not a video page, waiting...');
         }
 
         console.log('[ClipShare] Initialization complete');
