@@ -1,110 +1,31 @@
-name: Build & Publish Jellyfin Plugin
+name: Build Plugin
 
 on:
   push:
-    tags:
-      - "v*"
-
-permissions:
-  contents: write
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    # ---------------- CHECKOUT ----------------
-    - name: Checkout
+    - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
-    # ---------------- DOTNET ----------------
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 8.0.x
+        dotnet-version: '8.0.x'
 
-    # ---------------- BUILD SERVER ----------------
-    - name: Publish plugin
-      run: dotnet publish Server/ClipShare.csproj -c Release -o publish
-
-    # ---------------- PACKAGE SERVER ----------------
-    - name: Create plugin package
+    - name: Build plugin
       run: |
-        mkdir pkg
-        cp -r publish/* pkg/
-        cd pkg
-        zip -r ../clipshare.zip .
+        cd Server
+        dotnet build -c Release
 
-    # ---------------- CREATE RELEASE ----------------
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
       with:
-        files: clipshare.zip
-
-    - name: Wait GitHub CDN
-      run: sleep 20
-
-    - name: Get real asset URL + checksum
-      run: |
-        VERSION=${GITHUB_REF_NAME}
-
-        API="https://api.github.com/repos/${{ github.repository }}/releases/tags/${VERSION}"
-        curl -s $API > release.json
-
-        DOWNLOAD_URL=$(jq -r '.assets[] | select(.name=="clipshare.zip") | .browser_download_url' release.json)
-
-        echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
-
-        curl -L -o plugin.zip "$DOWNLOAD_URL"
-
-        # Jellyfin requires MD5 in UPPERCASE
-        md5sum plugin.zip | awk '{print toupper($1)}' > plugin.sha
-
-    # ---------------- SWITCH TO MAIN ----------------
-    - name: Switch to main branch
-      run: |
-        git fetch origin main
-        git checkout main
-        git pull origin main
-
-    # ---------------- UPDATE MANIFEST ----------------
-    - name: Update repository manifest
-      run: |
-        CHECKSUM=$(cat plugin.sha)
-
-        VERSION=${GITHUB_REF_NAME#v}
-        URL="$DOWNLOAD_URL"
-
-        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-        tmp=$(mktemp)
-
-        jq \
-          --arg version "$VERSION" \
-          --arg url "$URL" \
-          --arg ts "$TIMESTAMP" \
-          --arg checksum "$CHECKSUM" \
-        '
-        .[0].versions |=
-        ([{
-          version: $version,
-          changelog: "Auto build",
-          targetAbi: "10.11.0.0",
-          sourceUrl: $url,
-          checksum: $checksum,
-          timestamp: $ts
-        }] + .)
-        ' repository/manifest.json > "$tmp"
-
-        mv "$tmp" repository/manifest.json
-
-    # ---------------- COMMIT ----------------
-    - name: Commit manifest
-      run: |
-        git config user.name "github-actions"
-        git config user.email "actions@github.com"
-        git add repository/manifest.json
-        git commit -m "Add version v${GITHUB_REF_NAME#v}" || echo "No change"
-        git push origin main
+        name: clipshare-plugin
+        path: Server/bin/Release/net8.0/

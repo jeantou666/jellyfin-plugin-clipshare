@@ -35,9 +35,21 @@ namespace ClipShare.Controllers
         {
             var logger = HttpContext.RequestServices.GetService(typeof(ILogger<ClipShareController>)) as ILogger<ClipShareController>;
             
-            DebugLog($"Create clip request: ItemId={request.ItemId}, Start={request.StartSeconds}, End={request.EndSeconds}");
-            logger?.LogInformation("[ClipShare] Create clip request: ItemId={ItemId}, Start={Start}, End={End}", 
-                request.ItemId, request.StartSeconds, request.EndSeconds);
+            DebugLog($"=== CREATE CLIP REQUEST ===");
+            DebugLog($"ItemId: {request.ItemId}");
+            DebugLog($"MediaPath: {request.MediaPath}");
+            DebugLog($"Start: {request.StartSeconds}, End: {request.EndSeconds}");
+            DebugLog($"ExpireHours: {request.ExpireHours}");
+            
+            logger?.LogInformation("[ClipShare] Create clip request: ItemId={ItemId}, MediaPath={MediaPath}, Start={Start}, End={End}", 
+                request.ItemId, request.MediaPath, request.StartSeconds, request.EndSeconds);
+
+            // Validate required fields
+            if (string.IsNullOrEmpty(request.ItemId))
+            {
+                DebugLog("ERROR: ItemId is empty");
+                return BadRequest("ItemId is required");
+            }
 
             // Use media path provided by client
             var mediaPath = request.MediaPath;
