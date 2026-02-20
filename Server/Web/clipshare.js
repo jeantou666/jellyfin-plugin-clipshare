@@ -12,7 +12,7 @@
     }
     window.__clipshare_loaded = true;
 
-    console.log('[ClipShare] Initializing...');
+    console.log('[ClipShare] Script loaded, initializing...');
 
     // State
     let currentItemId = null;
@@ -22,6 +22,8 @@
     let isSelecting = false;
     let clipButton = null;
     let selectionOverlay = null;
+    let lastUrl = window.location.href;
+    let isInitialized = false;
 
     // Configuration
     const CONFIG = {
@@ -35,26 +37,20 @@
      */
     function getApiKey() {
         try {
-            // Method 1: From jellyfin_credentials in localStorage
             const credentials = localStorage.getItem('jellyfin_credentials');
             if (credentials) {
                 const parsed = JSON.parse(credentials);
                 if (parsed.Servers && parsed.Servers.length > 0) {
                     const token = parsed.Servers[0].AccessToken;
-                    if (token) {
-                        console.log('[ClipShare] Got API key from credentials');
-                        return token;
-                    }
+                    if (token) return token;
                 }
             }
 
-            // Method 2: From ApiClient
             if (window.ApiClient) {
                 if (window.ApiClient.accessToken) return window.ApiClient.accessToken;
                 if (window.ApiClient._serverInfo?.AccessToken) return window.ApiClient._serverInfo.AccessToken;
             }
 
-            // Method 3: From URL
             const urlParams = new URLSearchParams(window.location.search);
             const urlToken = urlParams.get('api_key');
             if (urlToken) return urlToken;
@@ -62,31 +58,45 @@
         } catch (e) {
             console.error('[ClipShare] Error getting API key:', e);
         }
-
         return null;
     }
 
     /**
-     * Get video ID from loaded resources (performance API)
+     * Get video ID from URL (most reliable)
      */
-    function getVideoId() {
-        if (currentItemId) return currentItemId;
+    function getVideoIdFromUrl() {
+        // Try URL path patterns
+        const patterns = [
+            /\/video\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i,
+            /id=([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i,
+            /\/play\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i
+        ];
 
+        for (const pattern of patterns) {
+            const match = window.location.href.match(pattern);
+            if (match) {
+                return match[1];
+            }
+        }
+
+        // Try from performance API (network requests)
         try {
             const resources = performance.getEntriesByType('resource');
             for (const r of resources) {
                 if (r.name && r.name.includes('/videos/')) {
                     const match = r.name.match(/videos\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-                    if (match) {
-                        currentItemId = match[1];
-                        console.log('[ClipShare] Found video ID from resources:', currentItemId);
-                        return currentItemId;
-                    }
+                    if (match) return match[1];
                 }
             }
-        } catch (e) {
-            console.warn('[ClipShare] Performance API error:', e);
-        }
+        } catch (e) {}
+
+        // Try from Jellyfin's global state
+        try {
+            if (window.ApiClient) {
+                const lastPlayback = window.ApiClient.lastPlaybackItem;
+                if (lastPlayback?.Id) return lastPlayback.Id;
+            }
+        } catch (e) {}
 
         return null;
     }
@@ -105,9 +115,7 @@
             console.log('[ClipShare] Fetching media path for:', itemId);
 
             const response = await fetch(`/Items?Ids=${itemId}&Fields=Path`, {
-                headers: {
-                    'X-Emby-Token': apiKey
-                }
+                headers: { 'X-Emby-Token': apiKey }
             });
 
             if (!response.ok) {
@@ -116,8 +124,6 @@
             }
 
             const data = await response.json();
-            console.log('[ClipShare] API response:', data);
-
             if (data.Items && data.Items.length > 0 && data.Items[0].Path) {
                 console.log('[ClipShare] Got media path:', data.Items[0].Path);
                 return data.Items[0].Path;
@@ -126,18 +132,82 @@
         } catch (e) {
             console.error('[ClipShare] Error fetching media path:', e);
         }
-
         return null;
+    }
+
+    /**
+     * Check if we're on a video playback page
+     */
+    function isVideoPage() {
+        const video = document.querySelector('video');
+        const url = window.location.href;
+        return video && (
+            url.includes('/video') ||
+            url.includes('/play') ||
+            document.querySelector('.videoPlayerContainer') ||
+            document.querySelector('.htmlVideoPlayer')
+        );
+    }
+
+    /**
+     * Reset all state for new video
+     */
+    function resetForNewVideo() {
+        console.log('[ClipShare] Resetting state for new video');
+        startTime = null;
+        endTime = null;
+        isSelecting = false;
+        currentMediaPath = null;
+        hideOverlay();
+        updateButtonState();
+    }
+
+    /**
+     * Update button appearance based on state
+     */
+    function updateButtonState() {
+        if (!clipButton) return;
+
+        if (startTime !== null && endTime === null) {
+            // Selecting end time
+            clipButton.innerHTML = '<span class="material-icons" style="font-size: 1.4em;">stop</span>';
+            clipButton.style.color = '#ff9800';
+            clipButton.title = 'Définir la fin du clip';
+        } else {
+            // Default state
+            clipButton.innerHTML = '<span class="material-icons" style="font-size: 1.4em;">content_cut</span>';
+            clipButton.style.color = '';
+            clipButton.title = 'Créer un clip (C)';
+        }
+    }
+
+    /**
+     * Remove existing button and overlay
+     */
+    function cleanupUI() {
+        const existingBtn = document.getElementById(CONFIG.buttonId);
+        if (existingBtn) {
+            existingBtn.remove();
+        }
+        const existingOverlay = document.getElementById(CONFIG.overlayId);
+        if (existingOverlay) {
+            existingOverlay.remove();
+        }
+        clipButton = null;
+        selectionOverlay = null;
     }
 
     /**
      * Create the clip button inside video player controls
      */
     function createClipButton() {
-        if (document.getElementById(CONFIG.buttonId)) return;
+        // Remove existing button first
+        const existingBtn = document.getElementById(CONFIG.buttonId);
+        if (existingBtn) {
+            existingBtn.remove();
+        }
 
-        // Try to find the video player controls container
-        // Jellyfin 10.11+ uses different selectors
+        // Find the video player controls container
         const selectors = [
             '.videoOsdBottom .buttonsFocusContainer',
             '.videoOsdBottom .flex',
@@ -158,40 +228,50 @@
 
         clipButton = document.createElement('button');
         clipButton.id = CONFIG.buttonId;
+        clipButton.type = 'button';
         clipButton.innerHTML = '<span class="material-icons" style="font-size: 1.4em;">content_cut</span>';
-        clipButton.title = 'Create Clip (C)';
+        clipButton.title = 'Créer un clip (C)';
         clipButton.className = 'paper-icon-button-light';
 
-        // Style to match Jellyfin player buttons
+        // Match Jellyfin button style
         clipButton.style.cssText = `
-            background: transparent;
-            color: inherit;
-            border: none;
-            padding: 0;
-            margin: 0 0.3em;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 2.8em;
-            height: 2.8em;
-            border-radius: 50%;
-            transition: background 0.2s, transform 0.1s;
-            font-size: inherit;
-            vertical-align: middle;
+            background: transparent !important;
+            color: inherit !important;
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 0.3em !important;
+            cursor: pointer !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 2.8em !important;
+            height: 2.8em !important;
+            border-radius: 50% !important;
+            font-size: inherit !important;
+            vertical-align: middle !important;
+            outline: none !important;
+            box-shadow: none !important;
         `;
 
-        clipButton.onmouseenter = () => {
-            clipButton.style.background = 'rgba(255, 255, 255, 0.1)';
-        };
-        clipButton.onmouseleave = () => {
-            clipButton.style.background = 'transparent';
-        };
-        clipButton.onclick = toggleSelectionMode;
+        // Use addEventListener instead of onclick
+        clipButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleSelectionMode();
+        });
+
+        clipButton.addEventListener('mouseenter', function() {
+            this.style.background = 'rgba(255, 255, 255, 0.1)';
+        });
+
+        clipButton.addEventListener('mouseleave', function() {
+            this.style.background = 'transparent';
+        });
 
         if (controlsContainer) {
-            // Insert before the volume slider or at the end
-            const volumeSlider = controlsContainer.querySelector('.volumeSliderContainer');
+            // Insert before volume slider or at the end
+            const volumeSlider = controlsContainer.querySelector('.volumeSliderContainer') ||
+                                controlsContainer.querySelector('[class*="volume"]');
             if (volumeSlider) {
                 controlsContainer.insertBefore(clipButton, volumeSlider);
             } else {
@@ -199,47 +279,37 @@
             }
             console.log('[ClipShare] Button added to player controls');
         } else {
-            // Fallback: fixed position bottom right of video
-            const videoContainer = document.querySelector('.videoPlayerContainer') || document.querySelector('.htmlVideoPlayer')?.parentElement;
+            // Fallback: position relative to video container
+            const videoContainer = document.querySelector('.videoPlayerContainer') ||
+                                   document.querySelector('.htmlVideoPlayer')?.parentElement ||
+                                   document.querySelector('video')?.parentElement;
             if (videoContainer) {
+                videoContainer.style.position = 'relative';
                 clipButton.style.cssText = `
                     position: absolute;
                     bottom: 80px;
                     right: 20px;
                     z-index: 99999;
-                    background: #00a4dc;
-                    color: white;
-                    border: none;
-                    padding: 12px;
-                    border-radius: 50%;
-                    cursor: pointer;
-                    font-size: 18px;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                    background: #00a4dc !important;
+                    color: white !important;
+                    border: none !important;
+                    padding: 12px !important;
+                    border-radius: 50% !important;
+                    cursor: pointer !important;
+                    font-size: 18px !important;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+                    outline: none !important;
                 `;
                 videoContainer.appendChild(clipButton);
-                console.log('[ClipShare] Button added as fallback (absolute position)');
+                console.log('[ClipShare] Button added to video container');
             } else {
-                // Last resort: fixed position
-                clipButton.style.cssText = `
-                    position: fixed;
-                    bottom: 100px;
-                    right: 20px;
-                    z-index: 99999;
-                    background: #00a4dc;
-                    color: white;
-                    border: none;
-                    padding: 12px;
-                    border-radius: 50%;
-                    cursor: pointer;
-                    font-size: 18px;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                `;
-                document.body.appendChild(clipButton);
-                console.log('[ClipShare] Button added as last resort (fixed position)');
+                console.warn('[ClipShare] Could not find a container for button');
+                return false;
             }
         }
 
         createSelectionOverlay();
+        return true;
     }
 
     /**
@@ -274,6 +344,7 @@
      * Update the overlay display
      */
     function updateOverlay(text, showActions = false) {
+        if (!selectionOverlay) createSelectionOverlay();
         if (!selectionOverlay) return;
 
         let content = `<div style="margin-bottom: 10px; line-height: 1.6;">${text}</div>`;
@@ -286,22 +357,21 @@
                            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: #222; color: white; box-sizing: border-box; font-size: 14px;">
                 </div>
                 <div style="margin-top: 15px; display: flex; gap: 10px;">
-                    <button id="clipshare-create" style="flex: 1; padding: 12px; background: #00a4dc; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;">
+                    <button id="clipshare-create" type="button" style="flex: 1; padding: 12px; background: #00a4dc; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;">
                         ✂️ Créer le clip
                     </button>
-                    <button id="clipshare-cancel" style="flex: 1; padding: 12px; background: #333; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                    <button id="clipshare-cancel" type="button" style="flex: 1; padding: 12px; background: #333; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
                         Annuler
                     </button>
                 </div>
-                <button id="clipshare-close" style="width: 100%; margin-top: 10px; padding: 10px; background: #222; color: #aaa; border: 1px solid #444; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                <button id="clipshare-close" type="button" style="width: 100%; margin-top: 10px; padding: 10px; background: #222; color: #aaa; border: 1px solid #444; border-radius: 6px; cursor: pointer; font-size: 13px;">
                     Fermer
                 </button>
             `;
         } else {
-            // Add close button for non-action overlays
             content += `
                 <div style="margin-top: 15px;">
-                    <button id="clipshare-close" style="width: 100%; padding: 10px; background: #333; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                    <button id="clipshare-close" type="button" style="width: 100%; padding: 10px; background: #333; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
                         Fermer
                     </button>
                 </div>
@@ -316,13 +386,30 @@
         const cancelBtn = document.getElementById('clipshare-cancel');
         const closeBtn = document.getElementById('clipshare-close');
 
-        if (createBtn) createBtn.onclick = createClip;
-        if (cancelBtn) cancelBtn.onclick = resetSelection;
-        if (closeBtn) closeBtn.onclick = resetSelection;
+        if (createBtn) {
+            createBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                createClip();
+            });
+        }
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                resetSelection();
+            });
+        }
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                resetSelection();
+            });
+        }
     }
 
     function hideOverlay() {
-        if (selectionOverlay) selectionOverlay.style.display = 'none';
+        if (selectionOverlay) {
+            selectionOverlay.style.display = 'none';
+        }
     }
 
     function toggleSelectionMode() {
@@ -345,12 +432,7 @@
         startTime = video.currentTime;
         endTime = null;
         isSelecting = true;
-
-        if (clipButton) {
-            clipButton.innerHTML = '<span class="material-icons" style="font-size: 1.4em;">stop</span>';
-            clipButton.style.color = '#ff9800';
-            clipButton.title = 'Définir la fin du clip';
-        }
+        updateButtonState();
 
         updateOverlay(`
             <strong style="font-size: 1.2em;">🎬 Sélection du clip</strong><br><br>
@@ -387,13 +469,7 @@
 
     function showClipConfirmation() {
         const duration = endTime - startTime;
-
-        if (clipButton) {
-            clipButton.innerHTML = '<span class="material-icons" style="font-size: 1.4em;">content_cut</span>';
-            clipButton.style.color = '';
-            clipButton.title = 'Créer un clip (C)';
-        }
-
+        updateButtonState();
         updateOverlay(`
             <strong style="font-size: 1.2em;">🎬 Clip prêt</strong><br><br>
             Début: <span style="color: #00a4dc; font-weight: bold;">${formatTime(startTime)}</span><br>
@@ -412,7 +488,7 @@
 
         try {
             // Get video ID
-            const videoId = getVideoId();
+            const videoId = getVideoIdFromUrl();
             if (!videoId) {
                 throw new Error('ID vidéo non trouvé. Rafraîchissez la page.');
             }
@@ -444,7 +520,6 @@
             }
 
             const data = await response.json();
-
             showSuccessOverlay(data.url);
 
         } catch (error) {
@@ -463,27 +538,26 @@
                        style="width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #222; color: white; box-sizing: border-box; font-size: 14px; text-align: center;"
                        id="clipshare-url">
                 <div style="margin-top: 15px;">
-                    <button id="clipshare-copy" style="width: 100%; padding: 12px; background: #00a4dc; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;">
+                    <button id="clipshare-copy" type="button" style="width: 100%; padding: 12px; background: #00a4dc; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;">
                         📋 Copier le lien
                     </button>
                 </div>
-                <button id="clipshare-close-success" style="width: 100%; margin-top: 10px; padding: 10px; background: #333; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                <button id="clipshare-close-success" type="button" style="width: 100%; margin-top: 10px; padding: 10px; background: #333; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
                     Fermer
                 </button>
             </div>
         `;
 
-        // Attach event listeners
         const urlInput = document.getElementById('clipshare-url');
         const copyBtn = document.getElementById('clipshare-copy');
         const closeBtn = document.getElementById('clipshare-close-success');
 
         if (urlInput) {
-            urlInput.onclick = function() { this.select(); };
+            urlInput.addEventListener('click', function() { this.select(); });
         }
 
         if (copyBtn) {
-            copyBtn.onclick = function() {
+            copyBtn.addEventListener('click', function() {
                 navigator.clipboard.writeText(url).then(() => {
                     this.textContent = '✓ Copié !';
                     this.style.background = '#4caf50';
@@ -493,14 +567,13 @@
                     this.textContent = '✓ Copié !';
                     this.style.background = '#4caf50';
                 });
-            };
+            });
         }
 
         if (closeBtn) {
-            closeBtn.onclick = resetSelection;
+            closeBtn.addEventListener('click', resetSelection);
         }
 
-        // Auto close after 20 seconds
         setTimeout(resetSelection, 20000);
     }
 
@@ -511,7 +584,7 @@
             <div style="text-align: center;">
                 <strong style="color: #f44336; font-size: 1.2em;">❌ Erreur</strong><br><br>
                 <span style="font-size: 0.95em; color: #ccc;">${message}</span><br><br>
-                <button id="clipshare-close-error" style="padding: 12px 24px; background: #444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                <button id="clipshare-close-error" type="button" style="padding: 12px 24px; background: #444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
                     Fermer
                 </button>
             </div>
@@ -519,7 +592,7 @@
 
         const closeBtn = document.getElementById('clipshare-close-error');
         if (closeBtn) {
-            closeBtn.onclick = resetSelection;
+            closeBtn.addEventListener('click', resetSelection);
         }
     }
 
@@ -528,12 +601,7 @@
         endTime = null;
         isSelecting = false;
         hideOverlay();
-
-        if (clipButton) {
-            clipButton.innerHTML = '<span class="material-icons" style="font-size: 1.4em;">content_cut</span>';
-            clipButton.style.color = '';
-            clipButton.title = 'Créer un clip (C)';
-        }
+        updateButtonState();
     }
 
     function formatTime(seconds) {
@@ -550,27 +618,86 @@
     }
 
     function handleKeyboard(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
         if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             e.preventDefault();
+            e.stopPropagation();
             toggleSelectionMode();
         }
 
-        if (e.key === 'Escape' && (startTime !== null || endTime !== null)) {
+        if (e.key === 'Escape') {
             resetSelection();
         }
     }
 
-    function observeForPlayer() {
-        // Watch for video player to appear (Jellyfin uses dynamic loading)
+    /**
+     * Main initialization - called when video page is detected
+     */
+    function initUI() {
+        const videoId = getVideoIdFromUrl();
+
+        // Check if this is a new video
+        if (videoId && videoId !== currentItemId) {
+            console.log('[ClipShare] New video detected:', videoId);
+            currentItemId = videoId;
+            currentMediaPath = null;
+            resetForNewVideo();
+        }
+
+        // Create button if not exists
+        if (!document.getElementById(CONFIG.buttonId)) {
+            if (createClipButton()) {
+                console.log('[ClipShare] UI initialized for video:', videoId);
+            }
+        }
+    }
+
+    /**
+     * URL change detection
+     */
+    function checkUrlChange() {
+        if (window.location.href !== lastUrl) {
+            console.log('[ClipShare] URL changed:', window.location.href);
+            lastUrl = window.location.href;
+
+            // Reset state for new page
+            currentItemId = null;
+            currentMediaPath = null;
+            resetForNewVideo();
+
+            // Check if we're on a video page
+            if (isVideoPage()) {
+                setTimeout(initUI, 500); // Small delay for DOM to settle
+            } else {
+                cleanupUI();
+            }
+        }
+    }
+
+    /**
+     * Main observer - watches for video player and URL changes
+     */
+    function startObserver() {
+        // Watch for URL changes (Jellyfin is SPA)
+        setInterval(checkUrlChange, 500);
+
+        // Watch for DOM changes (video player appearing)
         const observer = new MutationObserver((mutations) => {
             const video = document.querySelector('video');
-            const controlsContainer = document.querySelector('.videoOsdBottom') ||
-                                     document.querySelector('.osdControls');
 
-            if (video && !document.getElementById(CONFIG.buttonId)) {
-                console.log('[ClipShare] Player detected via observer');
-                createClipButton();
+            if (video && isVideoPage()) {
+                // Check for new video ID
+                const newVideoId = getVideoIdFromUrl();
+                if (newVideoId && newVideoId !== currentItemId) {
+                    console.log('[ClipShare] Video changed via DOM observer');
+                    initUI();
+                }
+
+                // Ensure button exists
+                if (!document.getElementById(CONFIG.buttonId)) {
+                    initUI();
+                }
             }
         });
 
@@ -579,36 +706,30 @@
             subtree: true
         });
 
-        return observer;
+        console.log('[ClipShare] Observer started');
     }
 
+    /**
+     * Initialize
+     */
     function init() {
-        console.log('[ClipShare] Starting initialization...');
+        console.log('[ClipShare] Initializing...');
 
-        // Check if video already exists
-        const checkPlayer = setInterval(() => {
-            if (document.querySelector('video')) {
-                clearInterval(checkPlayer);
-                console.log('[ClipShare] Player detected, creating UI');
-                createClipButton();
-
-                // Try to get video ID
-                const id = getVideoId();
-                if (id) {
-                    console.log('[ClipShare] Video ID already available:', id);
-                }
-            }
-        }, 500);
-
-        setTimeout(() => clearInterval(checkPlayer), 30000);
-
-        // Also observe for dynamic changes
-        observeForPlayer();
-
+        // Add keyboard listener
         document.addEventListener('keydown', handleKeyboard);
+
+        // Start observer
+        startObserver();
+
+        // Initial check
+        if (isVideoPage()) {
+            setTimeout(initUI, 500);
+        }
+
         console.log('[ClipShare] Initialization complete');
     }
 
+    // Start
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
