@@ -1,5 +1,6 @@
 using System;
 using ClipShare.Configuration;
+using MediaBrowser.Common;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
@@ -19,8 +20,8 @@ public class ClipSharePlugin : BasePlugin<PluginConfiguration>
 
     public override Guid Id => Guid.Parse("7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21");
 
-    public ClipSharePlugin()
-        : base()
+    public ClipSharePlugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
+        : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
     }
