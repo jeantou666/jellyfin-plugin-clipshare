@@ -7,6 +7,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.5.5",
+        "changelog": "Auto build",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v2.5.5/clipshare.zip",
+        "checksum": "8FDB8C84BD72A084F8584FBEFC7EAC3C",
+        "timestamp": "2026-02-21T23:45:41Z"
+      },
+      {
         "version": "2.5.4",
         "changelog": "Auto build",
         "targetAbi": "10.11.0.0",
