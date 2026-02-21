@@ -8,6 +8,14 @@
     "versions": [
       {
         "version": "2.3.1",
+        "changelog": "Auto build",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v2.3.1/clipshare.zip",
+        "checksum": "B3C695C27A3E9CEE95ADC2A1454CCEBB",
+        "timestamp": "2026-02-21T22:26:34Z"
+      },
+      {
+        "version": "2.3.1",
         "changelog": "Fixed button click handling and added meta.json for proper plugin loading",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v2.3.1/clipshare.zip",
