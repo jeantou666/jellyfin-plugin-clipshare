@@ -5,13 +5,14 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ClipShare</RootNamespace>
     <AssemblyName>ClipShare</AssemblyName>
-    <Version>2.5.5</Version>
+    <Version>2.6.0</Version>
     <AssemblyGuid>7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21</AssemblyGuid>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Jellyfin.Controller" Version="10.11.0" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Hosting.Abstractions" Version="2.2.0" />
   </ItemGroup>
 
   <ItemGroup>

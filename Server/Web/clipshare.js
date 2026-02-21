@@ -8,7 +8,7 @@
     if (window.__clipshare_loaded) return;
     window.__clipshare_loaded = true;
 
-    console.log('[ClipShare] ====== LOADED v2.5.5 ======');
+    console.log('[ClipShare] ====== LOADED v2.6.0 ======');
 
     let currentItemId = null;
     let currentMediaPath = null;
@@ -386,7 +386,7 @@
     }
 
     function init() {
-        console.log('[ClipShare] INIT v2.5.5');
+        console.log('[ClipShare] INIT v2.6.0');
         setupListeners();
         setInterval(mainLoop, 1500);
         setTimeout(() => { updateCurrentItemId(); createClipButton(); }, 500);

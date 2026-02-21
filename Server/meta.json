@@ -6,7 +6,7 @@
     "owner": "jeantou666",
     "category": "General",
     "targetAbi": "10.11.0.0",
-    "version": "2.5.5",
+    "version": "2.6.0",
     "assemblies": ["ClipShare.dll"],
     "status": "Active",
     "autoUpdate": true

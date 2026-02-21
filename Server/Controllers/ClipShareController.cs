@@ -73,7 +73,7 @@ namespace ClipShare.Controllers
         {
             try
             {
-                DebugLog($"Test endpoint called v2.5.5");
+                DebugLog($"Test endpoint called v2.6.0");
 
                 // Try to get ILibraryManager via service locator
                 var libManager = LibraryManager;
@@ -150,7 +150,7 @@ namespace ClipShare.Controllers
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
-            DebugLog($"=== CREATE CLIP v2.5.5 ===");
+            DebugLog($"=== CREATE CLIP v2.6.0 ===");
             DebugLog($"ItemId: {request.ItemId}");
             DebugLog($"Start: {request.StartSeconds}, End: {request.EndSeconds}");
 

@@ -1,5 +1,6 @@
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ClipShare;
@@ -11,7 +12,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
-        // The plugin will be instantiated by Jellyfin's plugin loader
-        // This registrator is just to ensure the plugin services are registered
+        // Register the startup filter for script injection
+        // This will inject our middleware early in the ASP.NET Core pipeline
+        serviceCollection.AddTransient<IStartupFilter, ScriptInjectionStartupFilter>();
     }
 }
