@@ -8,7 +8,7 @@
     if (window.__clipshare_loaded) return;
     window.__clipshare_loaded = true;
 
-    console.log('[ClipShare] ====== LOADED v2.3.1 ======');
+    console.log('[ClipShare] ====== LOADED v2.4.0 ======');
 
     let currentItemId = null;
     let currentMediaPath = null;

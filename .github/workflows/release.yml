@@ -31,9 +31,12 @@ jobs:
         # Get version from tag (remove 'v' prefix)
         VERSION=${GITHUB_REF_NAME#v}
         echo "VERSION=$VERSION" >> $GITHUB_ENV
+        
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
 
-        # Create meta.json for Jellyfin
-        cat > output/meta.json << EOF
+        # Create meta.json for Jellyfin plugin system
+        cat > output/meta.json << 'METAEOF'
         {
           "guid": "7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21",
           "name": "ClipShare",
@@ -41,19 +44,25 @@ jobs:
           "overview": "Create video clips directly from the Jellyfin video player.",
           "owner": "jeantou666",
           "category": "General",
-          "version": "${VERSION}",
+          "imageUrl": "",
           "targetAbi": "10.10.0.0",
           "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare",
-          "imageUrl": "",
-          "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          "version": "VERSION_PLACEHOLDER",
+          "timestamp": "TIMESTAMP_PLACEHOLDER"
         }
-        EOF
+        METAEOF
+        
+        # Replace placeholders
+        sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" output/meta.json
+        sed -i "s/TIMESTAMP_PLACEHOLDER/${TIMESTAMP}/g" output/meta.json
 
-        # List contents
-        echo "Package contents:"
+        # List contents for debugging
+        echo "=== Package contents ==="
         ls -la output/
+        echo "=== meta.json ==="
+        cat output/meta.json
 
-        # Create zip file
+        # Create zip file with all contents in root
         cd output
         zip -r ../clipshare.zip .
         cd ..
@@ -62,10 +71,7 @@ jobs:
         CHECKSUM=$(md5sum clipshare.zip | awk '{print $1}' | tr '[:lower:]' '[:upper:]')
         echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
 
-        # Get current timestamp
-        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
-
+        echo "=== Build Summary ==="
         echo "Version: $VERSION"
         echo "Checksum: $CHECKSUM"
         echo "Timestamp: $TIMESTAMP"
@@ -85,13 +91,12 @@ jobs:
         EOF
         )
 
-        # Update manifest.json using jq
+        # Update manifest.json using jq - keep only latest 3 versions
         jq --argjson new "$NEW_VERSION" '
-          .[0].versions = [$new] + .[0].versions
+          .[0].versions = ([$new] + .[0].versions) | .[0:3]
         ' repository/manifest.json > manifest_temp.json && mv manifest_temp.json repository/manifest.json
 
-        # Show updated manifest
-        echo "Updated manifest.json:"
+        echo "=== Updated manifest.json ==="
         cat repository/manifest.json
 
     - name: Commit and push updated manifest

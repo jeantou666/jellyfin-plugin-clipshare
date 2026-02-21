@@ -4,11 +4,13 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <RootNamespace>ClipShare</RootNamespace>
+    <AssemblyName>ClipShare</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Jellyfin.Controller" Version="10.10.0" />
     <PackageReference Include="Jellyfin.Model" Version="10.10.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Hosting.Abstractions" Version="2.2.0" />
   </ItemGroup>
 
   <ItemGroup>
