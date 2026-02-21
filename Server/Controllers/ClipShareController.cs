@@ -149,10 +149,24 @@ namespace ClipShare.Controllers
         }
 
         /// <summary>
-        /// Serves the ClipShare JavaScript file.
+        /// Serves the ClipShare JavaScript file (full path).
         /// </summary>
         [HttpGet("Script/clipshare.js")]
         public IActionResult GetScript()
+        {
+            return ServeScript();
+        }
+
+        /// <summary>
+        /// Serves the ClipShare JavaScript file (short path).
+        /// </summary>
+        [HttpGet("script")]
+        public IActionResult GetScriptShort()
+        {
+            return ServeScript();
+        }
+
+        private IActionResult ServeScript()
         {
             var assembly = typeof(ClipSharePlugin).Assembly;
             var resourceName = $"{typeof(ClipSharePlugin).Namespace}.Web.clipshare.js";
