@@ -34,7 +34,7 @@ public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages
         {
             var logPath = Path.Combine(applicationPaths.LogDirectoryPath, "clipshare-plugin.log");
             Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-            File.AppendAllText(logPath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] ClipShare Plugin v2.5.1 Constructor Called!\n");
+            File.AppendAllText(logPath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] ClipShare Plugin v2.5.2 Constructor Called!\n");
         } catch { }
     }
 
