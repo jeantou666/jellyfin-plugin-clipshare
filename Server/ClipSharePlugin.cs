@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using ClipShare.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
@@ -27,6 +28,14 @@ public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+        
+        // Log to file for debugging
+        try
+        {
+            var logPath = Path.Combine(applicationPaths.LogDirectoryPath, "clipshare-plugin.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            File.WriteAllText(logPath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] ClipShare Plugin Constructor Called!\n");
+        } catch { }
     }
 
     public IEnumerable<PluginPageInfo> GetPages() => new[]
