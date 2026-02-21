@@ -8,7 +8,7 @@
     if (window.__clipshare_loaded) return;
     window.__clipshare_loaded = true;
 
-    console.log('[ClipShare] ====== LOADED v2.3 ======');
+    console.log('[ClipShare] ====== LOADED v2.3.1 ======');
 
     let currentItemId = null;
     let currentMediaPath = null;
@@ -141,11 +141,25 @@
         const video = document.querySelector('video');
         if (!video) return false;
 
-        const selectors = ['.videoOsdBottom .buttonsFocusContainer', '.videoOsdBottom .flex', '.osdControls .buttonsFocusContainer', '.videoOsdBottom', '.osdControls'];
+        // Try multiple selectors for different Jellyfin versions/layouts
+        const selectors = [
+            '.videoOsdBottom .buttonsFocusContainer',
+            '.videoOsdBottom .flex',
+            '.osdControls .buttonsFocusContainer',
+            '.videoOsdBottom',
+            '.osdControls',
+            '.buttonsFocusContainer',
+            '.videoOsdBottom .btnPause',
+            '.videoOsdBottom .btnFastForward'
+        ];
         let container = null;
         for (const sel of selectors) {
             const el = document.querySelector(sel);
-            if (el?.offsetParent) { container = el; break; }
+            if (el?.offsetParent) {
+                container = el;
+                console.log('[ClipShare] Found container:', sel);
+                break;
+            }
         }
 
         clipButton = document.createElement('button');
@@ -154,20 +168,45 @@
         clipButton.className = 'paper-icon-button-light';
         clipButton.innerHTML = '<span class="material-icons" style="font-size:1.4em">content_cut</span>';
         clipButton.title = 'Créer un clip (C)';
-        clipButton.style.cssText = 'background:transparent!important;color:inherit!important;border:none!important;padding:0!important;margin:0 0.3em!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;width:2.8em!important;height:2.8em!important;border-radius:50%!important;';
-        clipButton.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); toggleSelectionMode(); }, true);
+        
+        // Make sure button is always clickable
+        const baseStyle = 'background:transparent!important;color:inherit!important;border:none!important;padding:0!important;margin:0 0.3em!important;cursor:pointer!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;width:2.8em!important;height:2.8em!important;border-radius:50%!important;pointer-events:auto!important;';
+        clipButton.style.cssText = baseStyle;
+        
+        // Use both click and touch events for better compatibility
+        const handleClick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            console.log('[ClipShare] Button clicked!');
+            toggleSelectionMode();
+        };
+        clipButton.addEventListener('click', handleClick, true);
+        clipButton.addEventListener('touchend', handleClick, true);
+        clipButton.addEventListener('mousedown', (e) => { e.stopPropagation(); }, true);
 
         if (container) {
-            container.insertBefore(clipButton, container.querySelector('.volumeSliderContainer, [class*="volume"]'));
+            // Try to insert before volume or at the end
+            const insertBefore = container.querySelector('.volumeSliderContainer, [class*="volume"], .osdTimeText');
+            if (insertBefore) {
+                container.insertBefore(clipButton, insertBefore);
+            } else {
+                container.appendChild(clipButton);
+            }
+            console.log('[ClipShare] Button added to container');
             return true;
         }
 
+        // Fallback: position absolute on video container
         const vc = document.querySelector('.videoPlayerContainer') || video.parentElement?.parentElement;
         if (vc) {
-            clipButton.style.cssText = 'position:absolute;bottom:90px;right:20px;z-index:99999;background:#00a4dc!important;color:white!important;border:none!important;padding:12px!important;border-radius:50%!important;cursor:pointer!important;';
+            clipButton.style.cssText = 'position:absolute;bottom:90px;right:20px;z-index:2147483647;background:#00a4dc!important;color:white!important;border:none!important;padding:12px!important;border-radius:50%!important;cursor:pointer!important;pointer-events:auto!important;';
             vc.appendChild(clipButton);
+            console.log('[ClipShare] Button added as fallback');
             return true;
         }
+        
+        console.log('[ClipShare] Could not find container for button');
         return false;
     }
 
