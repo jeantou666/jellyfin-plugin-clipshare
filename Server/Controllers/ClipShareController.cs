@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 using ClipShare.Models;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
-using System.Linq;
-using Microsoft.Extensions.Logging;
 using System.Reflection;
+using MediaBrowser.Controller.Library;
+using Microsoft.Extensions.Logging;
 
 namespace ClipShare.Controllers
 {
@@ -17,8 +17,14 @@ namespace ClipShare.Controllers
     public class ClipShareController : ControllerBase
     {
         private static readonly ConcurrentDictionary<string, ClipInfo> Clips = new();
-        public static IEnumerable<ClipInfo> GetAllClips() => Clips.Values;
-        public static void RemoveClip(string id) => Clips.TryRemove(id, out _);
+        private readonly ILibraryManager _libraryManager;
+        private readonly ILogger<ClipShareController> _logger;
+
+        public ClipShareController(ILibraryManager libraryManager, ILogger<ClipShareController> logger)
+        {
+            _libraryManager = libraryManager;
+            _logger = logger;
+        }
 
         private static readonly string DebugLogFile = "/tmp/clipshare-debug.log";
         private static void DebugLog(string message)
@@ -39,8 +45,9 @@ namespace ClipShare.Controllers
         {
             return Ok(new {
                 status = "ok",
-                version = "2.2.4",
-                plugin = ClipSharePlugin.Instance != null ? "loaded" : "not loaded"
+                version = "2.2.5",
+                plugin = ClipSharePlugin.Instance != null ? "loaded" : "not loaded",
+                libraryManager = _libraryManager != null ? "ok" : "null"
             });
         }
 
@@ -53,11 +60,9 @@ namespace ClipShare.Controllers
         {
             try
             {
-                // Use executing assembly instead of plugin type
                 var assembly = Assembly.GetExecutingAssembly();
                 var resources = assembly.GetManifestResourceNames();
 
-                // Find the script resource
                 string? resourceName = null;
                 foreach (var r in resources)
                 {
@@ -71,7 +76,7 @@ namespace ClipShare.Controllers
                 if (resourceName == null)
                 {
                     DebugLog($"Script not found. Resources: {string.Join(", ", resources)}");
-                    return NotFound($"Script not found. Available resources: {string.Join(", ", resources)}");
+                    return NotFound($"Script not found. Resources: {string.Join(", ", resources)}");
                 }
 
                 using var stream = assembly.GetManifestResourceStream(resourceName);
@@ -89,43 +94,46 @@ namespace ClipShare.Controllers
             catch (Exception ex)
             {
                 DebugLog($"Error serving script: {ex}");
-                return StatusCode(500, $"Error: {ex.Message}\n{ex.StackTrace}");
+                return StatusCode(500, $"Error: {ex.Message}");
             }
         }
 
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
-            var logger = HttpContext.RequestServices.GetService(typeof(ILogger<ClipShareController>)) as ILogger<ClipShareController>;
-
-            DebugLog($"=== CREATE CLIP v2.2.4 ===");
+            DebugLog($"=== CREATE CLIP v2.2.5 ===");
             DebugLog($"ItemId: {request.ItemId}");
             DebugLog($"Start: {request.StartSeconds}, End: {request.EndSeconds}");
 
-            logger?.LogInformation("[ClipShare] Create clip: ItemId={ItemId}, Start={Start}, End={End}",
-                request.ItemId, request.StartSeconds, request.EndSeconds);
+            _logger.LogInformation("[ClipShare] Create clip: ItemId={ItemId}", request.ItemId);
 
             if (string.IsNullOrEmpty(request.ItemId))
             {
-                DebugLog("ERROR: ItemId is empty");
                 return BadRequest("ItemId is required");
             }
 
             if (!Guid.TryParse(request.ItemId, out var itemGuid))
             {
-                DebugLog($"ERROR: Invalid ItemId format: {request.ItemId}");
                 return BadRequest("Invalid ItemId format");
             }
 
+            // Get media path from ILibraryManager
             string? mediaPath = null;
-            var plugin = ClipSharePlugin.Instance;
-
-            if (plugin != null)
+            try
             {
-                mediaPath = plugin.GetItemPath(itemGuid);
-                DebugLog($"Server path lookup: {mediaPath}");
+                var item = _libraryManager.GetItemById(itemGuid);
+                if (item != null)
+                {
+                    mediaPath = item.Path;
+                    DebugLog($"Library path: {mediaPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLog($"Library error: {ex.Message}");
             }
 
+            // Fallback to client path
             if (string.IsNullOrEmpty(mediaPath) && !string.IsNullOrEmpty(request.MediaPath))
             {
                 mediaPath = request.MediaPath;
@@ -134,13 +142,11 @@ namespace ClipShare.Controllers
 
             if (string.IsNullOrEmpty(mediaPath))
             {
-                DebugLog("ERROR: No media path found");
-                return BadRequest("Could not find media file. Try refreshing your library.");
+                return BadRequest("Could not find media file.");
             }
 
             if (!System.IO.File.Exists(mediaPath))
             {
-                DebugLog($"ERROR: File not found: {mediaPath}");
                 return NotFound($"Media file not found: {mediaPath}");
             }
 
@@ -159,9 +165,7 @@ namespace ClipShare.Controllers
                 return StatusCode(500, $"Failed to create clip: {ex.Message}");
             }
 
-            var expire = DateTime.UtcNow.AddHours(
-                request.ExpireHours > 0 ? request.ExpireHours : 72
-            );
+            var expire = DateTime.UtcNow.AddHours(request.ExpireHours > 0 ? request.ExpireHours : 72);
 
             Clips[id] = new ClipInfo
             {
@@ -197,11 +201,7 @@ namespace ClipShare.Controllers
             if (!Guid.TryParse(id, out var itemGuid))
                 return BadRequest("Invalid ID format");
 
-            var plugin = ClipSharePlugin.Instance;
-            if (plugin == null)
-                return StatusCode(500, "Plugin not initialized");
-
-            var item = plugin.GetItem(itemGuid);
+            var item = _libraryManager.GetItemById(itemGuid);
             if (item == null)
                 return NotFound($"Item not found: {id}");
 
