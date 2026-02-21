@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using System.Reflection;
 
 namespace ClipShare.Controllers
 {
@@ -29,12 +30,75 @@ namespace ClipShare.Controllers
             } catch { }
         }
 
+        /// <summary>
+        /// Simple test endpoint to verify the controller is working.
+        /// </summary>
+        [HttpGet]
+        [HttpGet("test")]
+        public IActionResult Test()
+        {
+            return Ok(new {
+                status = "ok",
+                version = "2.2.4",
+                plugin = ClipSharePlugin.Instance != null ? "loaded" : "not loaded"
+            });
+        }
+
+        /// <summary>
+        /// Serves the ClipShare JavaScript file.
+        /// </summary>
+        [HttpGet("script")]
+        [HttpGet("Script/clipshare.js")]
+        public IActionResult GetScript()
+        {
+            try
+            {
+                // Use executing assembly instead of plugin type
+                var assembly = Assembly.GetExecutingAssembly();
+                var resources = assembly.GetManifestResourceNames();
+
+                // Find the script resource
+                string? resourceName = null;
+                foreach (var r in resources)
+                {
+                    if (r.EndsWith("clipshare.js", StringComparison.OrdinalIgnoreCase))
+                    {
+                        resourceName = r;
+                        break;
+                    }
+                }
+
+                if (resourceName == null)
+                {
+                    DebugLog($"Script not found. Resources: {string.Join(", ", resources)}");
+                    return NotFound($"Script not found. Available resources: {string.Join(", ", resources)}");
+                }
+
+                using var stream = assembly.GetManifestResourceStream(resourceName);
+                if (stream == null)
+                {
+                    return NotFound("Script stream is null");
+                }
+
+                using var reader = new StreamReader(stream);
+                var script = reader.ReadToEnd();
+
+                DebugLog($"Script served: {script.Length} bytes");
+                return Content(script, "application/javascript");
+            }
+            catch (Exception ex)
+            {
+                DebugLog($"Error serving script: {ex}");
+                return StatusCode(500, $"Error: {ex.Message}\n{ex.StackTrace}");
+            }
+        }
+
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
             var logger = HttpContext.RequestServices.GetService(typeof(ILogger<ClipShareController>)) as ILogger<ClipShareController>;
 
-            DebugLog($"=== CREATE CLIP v2.0 ===");
+            DebugLog($"=== CREATE CLIP v2.2.4 ===");
             DebugLog($"ItemId: {request.ItemId}");
             DebugLog($"Start: {request.StartSeconds}, End: {request.EndSeconds}");
 
@@ -53,7 +117,6 @@ namespace ClipShare.Controllers
                 return BadRequest("Invalid ItemId format");
             }
 
-            // Get media path from server using ILibraryManager (like intro-skipper)
             string? mediaPath = null;
             var plugin = ClipSharePlugin.Instance;
 
@@ -61,10 +124,8 @@ namespace ClipShare.Controllers
             {
                 mediaPath = plugin.GetItemPath(itemGuid);
                 DebugLog($"Server path lookup: {mediaPath}");
-                logger?.LogInformation("[ClipShare] Server path: {Path}", mediaPath);
             }
 
-            // Fallback to client path
             if (string.IsNullOrEmpty(mediaPath) && !string.IsNullOrEmpty(request.MediaPath))
             {
                 mediaPath = request.MediaPath;
@@ -80,43 +141,26 @@ namespace ClipShare.Controllers
             if (!System.IO.File.Exists(mediaPath))
             {
                 DebugLog($"ERROR: File not found: {mediaPath}");
-                logger?.LogError("[ClipShare] File not found: {Path}", mediaPath);
                 return NotFound($"Media file not found: {mediaPath}");
             }
 
             var id = Guid.NewGuid().ToString("N");
-            var folder = GetClipFolder(logger);
+            var folder = GetClipFolder();
             var output = Path.Combine(folder, $"{id}.mp4");
-
-            DebugLog($"Output: {output}");
-            logger?.LogInformation("[ClipShare] Output: {Output}", output);
 
             try
             {
                 Directory.CreateDirectory(folder);
-                var testFile = Path.Combine(folder, "test.txt");
-                await System.IO.File.WriteAllTextAsync(testFile, "test");
-                System.IO.File.Delete(testFile);
+                await GenerateClip(mediaPath, output, request.StartSeconds, request.EndSeconds);
             }
             catch (Exception ex)
             {
-                DebugLog($"ERROR: Folder not writable: {ex.Message}");
-                return StatusCode(500, $"Output folder not writable: {ex.Message}");
-            }
-
-            try
-            {
-                await GenerateClip(mediaPath, output, request.StartSeconds, request.EndSeconds, logger);
-            }
-            catch (Exception ex)
-            {
-                DebugLog($"ERROR: Clip generation failed: {ex.Message}");
-                logger?.LogError("[ClipShare] Clip failed: {Error}", ex.Message);
-                return StatusCode(500, $"Failed to generate clip: {ex.Message}");
+                DebugLog($"ERROR: {ex.Message}");
+                return StatusCode(500, $"Failed to create clip: {ex.Message}");
             }
 
             var expire = DateTime.UtcNow.AddHours(
-                request.ExpireHours > 0 ? request.ExpireHours : ClipSharePlugin.Instance!.Configuration.DefaultExpirationHours
+                request.ExpireHours > 0 ? request.ExpireHours : 72
             );
 
             Clips[id] = new ClipInfo
@@ -127,7 +171,6 @@ namespace ClipShare.Controllers
             };
 
             var url = $"{Request.Scheme}://{Request.Host}/ClipShare/video/{id}";
-            logger?.LogInformation("[ClipShare] Clip created: {Url}", url);
             return Ok(new { url });
         }
 
@@ -148,64 +191,6 @@ namespace ClipShare.Controllers
             return File(stream, "video/mp4", enableRangeProcessing: true);
         }
 
-        /// <summary>
-        /// Serves the ClipShare JavaScript file (full path).
-        /// </summary>
-        [HttpGet("Script/clipshare.js")]
-        public IActionResult GetScript()
-        {
-            return ServeScript();
-        }
-
-        /// <summary>
-        /// Serves the ClipShare JavaScript file (short path).
-        /// </summary>
-        [HttpGet("script")]
-        public IActionResult GetScriptShort()
-        {
-            return ServeScript();
-        }
-
-        private IActionResult ServeScript()
-        {
-            try
-            {
-                var assembly = typeof(ClipSharePlugin).Assembly;
-                
-                // List all embedded resources for debugging
-                var resources = assembly.GetManifestResourceNames();
-                
-                // Try to find the script resource
-                var resourceName = "ClipShare.Web.clipshare.js";
-                
-                // If not found, try to find it by pattern
-                if (!resources.Contains(resourceName))
-                {
-                    resourceName = resources.FirstOrDefault(r => r.EndsWith("clipshare.js", StringComparison.OrdinalIgnoreCase));
-                }
-
-                if (resourceName == null)
-                {
-                    return NotFound($"Script not found. Available: {string.Join(", ", resources)}");
-                }
-
-                using var stream = assembly.GetManifestResourceStream(resourceName);
-                if (stream == null)
-                {
-                    return NotFound("Script stream is null");
-                }
-
-                using var reader = new StreamReader(stream);
-                var script = reader.ReadToEnd();
-
-                return Content(script, "application/javascript");
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, $"Error loading script: {ex.Message}");
-            }
-        }
-
         [HttpGet("Item/{id}")]
         public IActionResult GetItemInfo(string id)
         {
@@ -223,7 +208,7 @@ namespace ClipShare.Controllers
             return Ok(new { Id = item.Id, Name = item.Name, Path = item.Path });
         }
 
-        private string GetClipFolder(ILogger? logger)
+        private string GetClipFolder()
         {
             var tmpFolder = "/tmp/jellyfin-clipshare";
             try
@@ -239,12 +224,10 @@ namespace ClipShare.Controllers
             return tempClipFolder;
         }
 
-        private async Task GenerateClip(string input, string output, double start, double end, ILogger? logger)
+        private async Task GenerateClip(string input, string output, double start, double end)
         {
             var duration = end - start;
             var ffmpegPath = "/usr/lib/jellyfin-ffmpeg/ffmpeg";
-
-            DebugLog($"FFmpeg: start={start}, duration={duration}");
 
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
@@ -269,16 +252,6 @@ namespace ClipShare.Controllers
             startInfo.ArgumentList.Add(output);
 
             var process = new System.Diagnostics.Process { StartInfo = startInfo };
-            var errorOutput = new System.Text.StringBuilder();
-
-            process.ErrorDataReceived += (s, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                {
-                    errorOutput.AppendLine(e.Data);
-                    DebugLog($"FFmpeg: {e.Data}");
-                }
-            };
 
             process.Start();
             process.BeginErrorReadLine();
@@ -294,8 +267,6 @@ namespace ClipShare.Controllers
             {
                 throw new Exception("Output file was not created");
             }
-
-            DebugLog($"Clip created: {output}");
         }
     }
 }
