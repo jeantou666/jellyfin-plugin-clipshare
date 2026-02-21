@@ -19,15 +19,20 @@ public class ClipShareEntryPoint : IServerEntryPoint
 
     public Task RunAsync()
     {
-        _logger.LogInformation("[ClipShare] EntryPoint started - Plugin is loading!");
+        _logger.LogInformation("[ClipShare] ========== ENTRYPOINT STARTED ==========");
+        _logger.LogInformation("[ClipShare] EntryPoint is running - plugin services are registered!");
         
-        if (ClipSharePlugin.Instance == null)
+        // Check if the plugin instance is available
+        if (ClipSharePlugin.Instance != null)
         {
-            _logger.LogWarning("[ClipShare] Plugin instance was null in EntryPoint");
+            _logger.LogInformation("[ClipShare] Plugin Instance: FOUND");
+            _logger.LogInformation("[ClipShare] Plugin Name: {Name}", ClipSharePlugin.Instance.Name);
+            _logger.LogInformation("[ClipShare] Plugin ID: {Id}", ClipSharePlugin.Instance.Id);
         }
         else
         {
-            _logger.LogInformation("[ClipShare] Plugin instance is available");
+            _logger.LogWarning("[ClipShare] Plugin Instance: NULL - Plugin class was not instantiated by Jellyfin");
+            _logger.LogWarning("[ClipShare] This means Jellyfin's plugin loader did not call the ClipSharePlugin constructor");
         }
         
         return Task.CompletedTask;
@@ -35,5 +40,6 @@ public class ClipShareEntryPoint : IServerEntryPoint
 
     public void Dispose()
     {
+        _logger.LogInformation("[ClipShare] EntryPoint disposed");
     }
 }
