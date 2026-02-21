@@ -31,12 +31,12 @@ jobs:
         # Get version from tag (remove 'v' prefix)
         VERSION=${GITHUB_REF_NAME#v}
         echo "VERSION=$VERSION" >> $GITHUB_ENV
-        
+
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
 
         # Create meta.json for Jellyfin plugin system
-        cat > output/meta.json << 'METAEOF'
+        cat > output/meta.json << METAEOF
         {
           "guid": "7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21",
           "name": "ClipShare",
@@ -44,17 +44,15 @@ jobs:
           "overview": "Create video clips directly from the Jellyfin video player.",
           "owner": "jeantou666",
           "category": "General",
-          "imageUrl": "",
           "targetAbi": "10.11.0.0",
           "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare",
-          "version": "VERSION_PLACEHOLDER",
-          "timestamp": "TIMESTAMP_PLACEHOLDER"
+          "version": "${VERSION}",
+          "timestamp": "${TIMESTAMP}",
+          "assemblies": ["ClipShare.dll"],
+          "status": "Active",
+          "autoUpdate": true
         }
         METAEOF
-        
-        # Replace placeholders
-        sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" output/meta.json
-        sed -i "s/TIMESTAMP_PLACEHOLDER/${TIMESTAMP}/g" output/meta.json
 
         # List contents for debugging
         echo "=== Package contents ==="

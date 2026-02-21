@@ -1,12 +1,13 @@
 {
-    "Id": "7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21",
-    "Version": "2.5.4",
-    "Name": "ClipShare",
-    "Description": "Create video clips directly from the Jellyfin video player.",
-    "Owner": "clipshare",
-    "Category": "General",
-    "TargetAbi": "10.11.0.0",
-    "TargetFramework": "net9.0",
-    "Changelog": "Simplified plugin architecture for Jellyfin 10.11.x",
-    "Assembly": "ClipShare.dll"
+    "guid": "7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21",
+    "name": "ClipShare",
+    "description": "Create video clips from the Jellyfin player",
+    "overview": "Create video clips directly from the Jellyfin video player.",
+    "owner": "jeantou666",
+    "category": "General",
+    "targetAbi": "10.11.0.0",
+    "version": "2.5.5",
+    "assemblies": ["ClipShare.dll"],
+    "status": "Active",
+    "autoUpdate": true
 }
