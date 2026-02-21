@@ -32,6 +32,27 @@ jobs:
         VERSION=${GITHUB_REF_NAME#v}
         echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+        # Create meta.json for Jellyfin
+        cat > output/meta.json << EOF
+        {
+          "guid": "7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21",
+          "name": "ClipShare",
+          "description": "Create video clips from the Jellyfin player",
+          "overview": "Create video clips directly from the Jellyfin video player.",
+          "owner": "jeantou666",
+          "category": "General",
+          "version": "${VERSION}",
+          "targetAbi": "10.10.0.0",
+          "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare",
+          "imageUrl": "",
+          "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        }
+        EOF
+
+        # List contents
+        echo "Package contents:"
+        ls -la output/
+
         # Create zip file
         cd output
         zip -r ../clipshare.zip .
