@@ -17,10 +17,10 @@ namespace ClipShare.Controllers
     public class ClipShareController : ControllerBase
     {
         private static readonly ConcurrentDictionary<string, ClipInfo> Clips = new();
-        private readonly ILibraryManager _libraryManager;
-        private readonly ILogger<ClipShareController> _logger;
+        private readonly ILibraryManager? _libraryManager;
+        private readonly ILogger<ClipShareController>? _logger;
 
-        public ClipShareController(ILibraryManager libraryManager, ILogger<ClipShareController> logger)
+        public ClipShareController(ILibraryManager? libraryManager = null, ILogger<ClipShareController>? logger = null)
         {
             _libraryManager = libraryManager;
             _logger = logger;
@@ -43,12 +43,25 @@ namespace ClipShare.Controllers
         [HttpGet("test")]
         public IActionResult Test()
         {
-            return Ok(new {
-                status = "ok",
-                version = "2.2.5",
-                plugin = ClipSharePlugin.Instance != null ? "loaded" : "not loaded",
-                libraryManager = _libraryManager != null ? "ok" : "null"
-            });
+            try
+            {
+                DebugLog("Test endpoint called");
+                return Ok(new {
+                    status = "ok",
+                    version = "2.2.6",
+                    plugin = ClipSharePlugin.Instance != null ? "loaded" : "not loaded",
+                    libraryManager = _libraryManager != null ? "ok" : "null"
+                });
+            }
+            catch (Exception ex)
+            {
+                DebugLog($"Test error: {ex}");
+                return Ok(new {
+                    status = "error",
+                    version = "2.2.6",
+                    error = ex.Message
+                });
+            }
         }
 
         /// <summary>
@@ -60,8 +73,11 @@ namespace ClipShare.Controllers
         {
             try
             {
+                DebugLog("GetScript called");
                 var assembly = Assembly.GetExecutingAssembly();
                 var resources = assembly.GetManifestResourceNames();
+
+                DebugLog($"Resources: {string.Join(", ", resources)}");
 
                 string? resourceName = null;
                 foreach (var r in resources)
@@ -101,11 +117,14 @@ namespace ClipShare.Controllers
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
-            DebugLog($"=== CREATE CLIP v2.2.5 ===");
+            DebugLog($"=== CREATE CLIP v2.2.6 ===");
             DebugLog($"ItemId: {request.ItemId}");
             DebugLog($"Start: {request.StartSeconds}, End: {request.EndSeconds}");
 
-            _logger.LogInformation("[ClipShare] Create clip: ItemId={ItemId}", request.ItemId);
+            try
+            {
+                _logger?.LogInformation("[ClipShare] Create clip: ItemId={ItemId}", request.ItemId);
+            } catch { }
 
             if (string.IsNullOrEmpty(request.ItemId))
             {
@@ -121,11 +140,14 @@ namespace ClipShare.Controllers
             string? mediaPath = null;
             try
             {
-                var item = _libraryManager.GetItemById(itemGuid);
-                if (item != null)
+                if (_libraryManager != null)
                 {
-                    mediaPath = item.Path;
-                    DebugLog($"Library path: {mediaPath}");
+                    var item = _libraryManager.GetItemById(itemGuid);
+                    if (item != null)
+                    {
+                        mediaPath = item.Path;
+                        DebugLog($"Library path: {mediaPath}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -200,6 +222,9 @@ namespace ClipShare.Controllers
         {
             if (!Guid.TryParse(id, out var itemGuid))
                 return BadRequest("Invalid ID format");
+
+            if (_libraryManager == null)
+                return BadRequest("LibraryManager not available");
 
             var item = _libraryManager.GetItemById(itemGuid);
             if (item == null)

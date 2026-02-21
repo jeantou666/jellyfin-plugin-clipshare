@@ -7,6 +7,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.2.6",
+        "changelog": "Fixed controller dependency injection and error handling",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v2.2.6/clipshare.zip",
+        "checksum": "PLACEHOLDER",
+        "timestamp": "2026-02-22T00:00:00Z"
+      },
+      {
         "version": "2.2.5",
         "changelog": "Auto build",
         "targetAbi": "10.11.0.0",
