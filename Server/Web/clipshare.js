@@ -1,6 +1,6 @@
 /**
- * ClipShare - Jellyfin Clip Creator Plugin v2.0
- * Server handles path lookup via ILibraryManager (like intro-skipper)
+ * ClipShare - Jellyfin Clip Creator Plugin v2.3
+ * Client fetches media path via Jellyfin API (bypasses ILibraryManager DI issues)
  */
 (function() {
     'use strict';
@@ -8,9 +8,10 @@
     if (window.__clipshare_loaded) return;
     window.__clipshare_loaded = true;
 
-    console.log('[ClipShare] ====== LOADED v2.2.7 ======');
+    console.log('[ClipShare] ====== LOADED v2.3 ======');
 
     let currentItemId = null;
+    let currentMediaPath = null;
     let startTime = null;
     let endTime = null;
     let clipButton = null;
@@ -45,6 +46,28 @@
             }
             return window.ApiClient?._currentUser?.Id || window.ApiClient?._serverInfo?.UserId;
         } catch (e) { return null; }
+    }
+
+    async function fetchMediaPath(itemId) {
+        try {
+            const apiKey = getApiKey();
+            const userId = getUserId();
+            if (!apiKey || !userId) return null;
+
+            const resp = await fetch(`/Users/${userId}/Items/${itemId}`, {
+                headers: { 'X-Emby-Token': apiKey },
+                credentials: 'include'
+            });
+
+            if (!resp.ok) return null;
+
+            const item = await resp.json();
+            console.log('[ClipShare] Item info:', item.Name, item.Path);
+            return item.Path || null;
+        } catch (e) {
+            console.error('[ClipShare] Error fetching media path:', e);
+            return null;
+        }
     }
 
     async function getCurrentPlayingId() {
@@ -94,6 +117,7 @@
         if (!id) id = await getCurrentPlayingId();
         if (id && id !== currentItemId) {
             currentItemId = id;
+            currentMediaPath = null; // Reset path when ID changes
             console.log('[ClipShare] Updated ID:', id);
         }
         return currentItemId;
@@ -225,13 +249,24 @@
                 throw new Error('ID vidéo non trouvé. Rafraîchissez la page.');
             }
 
-            console.log('[ClipShare] Creating clip, itemId:', currentItemId);
+            // Fetch media path from Jellyfin API
+            if (!currentMediaPath) {
+                updateOverlay('<strong style="font-size:1.2em">⏳ Récupération du fichier...</strong>');
+                currentMediaPath = await fetchMediaPath(currentItemId);
+            }
+
+            if (!currentMediaPath) {
+                throw new Error('Impossible de récupérer le chemin du fichier média.');
+            }
+
+            console.log('[ClipShare] Creating clip:', { itemId: currentItemId, mediaPath: currentMediaPath });
 
             const resp = await fetch('/ClipShare/Create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     itemId: currentItemId,
+                    mediaPath: currentMediaPath,
                     startSeconds: startSec,
                     endSeconds: endSec,
                     expireHours: expire
@@ -296,12 +331,14 @@
         document.addEventListener('play', e => {
             if (e.target.tagName === 'VIDEO') {
                 currentItemId = null;
+                currentMediaPath = null;
                 setTimeout(() => updateCurrentItemId(), 500);
             }
         }, true);
 
         window.addEventListener('hashchange', () => {
             currentItemId = null;
+            currentMediaPath = null;
             document.getElementById(CONFIG.buttonId)?.remove();
             setTimeout(() => updateCurrentItemId(), 500);
         });
@@ -310,7 +347,7 @@
     }
 
     function init() {
-        console.log('[ClipShare] INIT v2.0');
+        console.log('[ClipShare] INIT v2.3');
         setupListeners();
         setInterval(mainLoop, 1500);
         setTimeout(() => { updateCurrentItemId(); createClipButton(); }, 500);
@@ -324,6 +361,7 @@
     }
 
     window.__clipshare_getId = () => currentItemId;
+    window.__clipshare_getPath = () => currentMediaPath;
     window.__clipshare_update = updateCurrentItemId;
-    window.__clipshare_debug = () => ({ currentItemId, startTime, endTime });
+    window.__clipshare_debug = () => ({ currentItemId, currentMediaPath, startTime, endTime });
 })();

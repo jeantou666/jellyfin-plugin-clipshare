@@ -81,7 +81,7 @@ namespace ClipShare.Controllers
 
                 return Ok(new {
                     status = "ok",
-                    version = "2.2.7",
+                    version = "2.3.0",
                     plugin = pluginInstance != null ? "loaded" : "not loaded",
                     libraryManager = libManager != null ? "ok" : "null"
                 });
@@ -91,7 +91,7 @@ namespace ClipShare.Controllers
                 DebugLog($"Test error: {ex}");
                 return Ok(new {
                     status = "error",
-                    version = "2.2.7",
+                    version = "2.3.0",
                     error = ex.Message
                 });
             }
@@ -150,7 +150,7 @@ namespace ClipShare.Controllers
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
-            DebugLog($"=== CREATE CLIP v2.2.7 ===");
+            DebugLog($"=== CREATE CLIP v2.3.0 ===");
             DebugLog($"ItemId: {request.ItemId}");
             DebugLog($"Start: {request.StartSeconds}, End: {request.EndSeconds}");
 
