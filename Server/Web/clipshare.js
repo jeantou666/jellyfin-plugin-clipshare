@@ -8,7 +8,7 @@
     if (window.__clipshare_loaded) return;
     window.__clipshare_loaded = true;
 
-    console.log('[ClipShare] ====== LOADED v2.2.6 ======');
+    console.log('[ClipShare] ====== LOADED v2.2.7 ======');
 
     let currentItemId = null;
     let startTime = null;

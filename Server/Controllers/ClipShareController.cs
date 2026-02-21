@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ClipShare.Controllers
 {
@@ -17,13 +18,40 @@ namespace ClipShare.Controllers
     public class ClipShareController : ControllerBase
     {
         private static readonly ConcurrentDictionary<string, ClipInfo> Clips = new();
-        private readonly ILibraryManager? _libraryManager;
-        private readonly ILogger<ClipShareController>? _logger;
 
-        public ClipShareController(ILibraryManager? libraryManager = null, ILogger<ClipShareController>? logger = null)
+        private ILibraryManager? _libraryManager;
+        private ILogger<ClipShareController>? _logger;
+
+        private ILibraryManager LibraryManager
         {
-            _libraryManager = libraryManager;
-            _logger = logger;
+            get
+            {
+                if (_libraryManager == null)
+                {
+                    try
+                    {
+                        _libraryManager = HttpContext.RequestServices.GetService<ILibraryManager>();
+                    }
+                    catch { }
+                }
+                return _libraryManager!;
+            }
+        }
+
+        private ILogger<ClipShareController> Logger
+        {
+            get
+            {
+                if (_logger == null)
+                {
+                    try
+                    {
+                        _logger = HttpContext.RequestServices.GetService<ILogger<ClipShareController>>();
+                    }
+                    catch { }
+                }
+                return _logger!;
+            }
         }
 
         private static readonly string DebugLogFile = "/tmp/clipshare-debug.log";
@@ -46,11 +74,16 @@ namespace ClipShare.Controllers
             try
             {
                 DebugLog("Test endpoint called");
+
+                // Try to get ILibraryManager via service locator
+                var libManager = LibraryManager;
+                var pluginInstance = ClipSharePlugin.Instance;
+
                 return Ok(new {
                     status = "ok",
-                    version = "2.2.6",
-                    plugin = ClipSharePlugin.Instance != null ? "loaded" : "not loaded",
-                    libraryManager = _libraryManager != null ? "ok" : "null"
+                    version = "2.2.7",
+                    plugin = pluginInstance != null ? "loaded" : "not loaded",
+                    libraryManager = libManager != null ? "ok" : "null"
                 });
             }
             catch (Exception ex)
@@ -58,7 +91,7 @@ namespace ClipShare.Controllers
                 DebugLog($"Test error: {ex}");
                 return Ok(new {
                     status = "error",
-                    version = "2.2.6",
+                    version = "2.2.7",
                     error = ex.Message
                 });
             }
@@ -117,13 +150,13 @@ namespace ClipShare.Controllers
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] ClipRequest request)
         {
-            DebugLog($"=== CREATE CLIP v2.2.6 ===");
+            DebugLog($"=== CREATE CLIP v2.2.7 ===");
             DebugLog($"ItemId: {request.ItemId}");
             DebugLog($"Start: {request.StartSeconds}, End: {request.EndSeconds}");
 
             try
             {
-                _logger?.LogInformation("[ClipShare] Create clip: ItemId={ItemId}", request.ItemId);
+                Logger?.LogInformation("[ClipShare] Create clip: ItemId={ItemId}", request.ItemId);
             } catch { }
 
             if (string.IsNullOrEmpty(request.ItemId))
@@ -140,9 +173,10 @@ namespace ClipShare.Controllers
             string? mediaPath = null;
             try
             {
-                if (_libraryManager != null)
+                var libManager = LibraryManager;
+                if (libManager != null)
                 {
-                    var item = _libraryManager.GetItemById(itemGuid);
+                    var item = libManager.GetItemById(itemGuid);
                     if (item != null)
                     {
                         mediaPath = item.Path;
@@ -164,7 +198,7 @@ namespace ClipShare.Controllers
 
             if (string.IsNullOrEmpty(mediaPath))
             {
-                return BadRequest("Could not find media file.");
+                return BadRequest("Could not find media file. Please provide MediaPath in request.");
             }
 
             if (!System.IO.File.Exists(mediaPath))
@@ -223,10 +257,11 @@ namespace ClipShare.Controllers
             if (!Guid.TryParse(id, out var itemGuid))
                 return BadRequest("Invalid ID format");
 
-            if (_libraryManager == null)
+            var libManager = LibraryManager;
+            if (libManager == null)
                 return BadRequest("LibraryManager not available");
 
-            var item = _libraryManager.GetItemById(itemGuid);
+            var item = libManager.GetItemById(itemGuid);
             if (item == null)
                 return NotFound($"Item not found: {id}");
 
