@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ClipShare</RootNamespace>
     <AssemblyName>ClipShare</AssemblyName>
-    <Version>2.4.3</Version>
+    <Version>2.4.4</Version>
   </PropertyGroup>
 
   <ItemGroup>

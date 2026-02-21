@@ -22,7 +22,7 @@ public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages
 
     public override Guid Id => Guid.Parse("7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21");
 
-    public override Version Version => new Version(2, 4, 3);
+    public override Version Version => new Version(2, 4, 4);
 
     public ClipSharePlugin(
         IServerApplicationPaths applicationPaths,
@@ -36,7 +36,7 @@ public class ClipSharePlugin : BasePlugin<PluginConfiguration>, IHasWebPages
         {
             var logPath = Path.Combine(applicationPaths.LogDirectoryPath, "clipshare-plugin.log");
             Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-            File.AppendAllText(logPath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] ClipShare Plugin v2.4.3 Constructor Called!\n");
+            File.AppendAllText(logPath, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] ClipShare Plugin v2.4.4 Constructor Called!\n");
         } catch { }
     }
 
