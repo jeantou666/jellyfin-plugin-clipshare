@@ -83,7 +83,7 @@ jobs:
         {
           "version": "${{ env.VERSION }}",
           "changelog": "Auto build",
-          "targetAbi": "10.11.0.0",
+          "targetAbi": "10.10.0.0",
           "sourceUrl": "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/clipshare.zip",
           "checksum": "${{ env.CHECKSUM }}",
           "timestamp": "${{ env.TIMESTAMP }}"

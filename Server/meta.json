@@ -1,0 +1,12 @@
+{
+    "Id": "7f4a3b2c-6d5e-4a11-9c2b-5e3a7d4f8a21",
+    "Version": "2.4.3",
+    "Name": "ClipShare",
+    "Description": "Create video clips directly from the Jellyfin video player.",
+    "Owner": "clipshare",
+    "Category": "General",
+    "TargetAbi": "10.10.0.0",
+    "TargetFramework": "net8.0",
+    "Changelog": "Fixed plugin loading issues by adding PluginServiceRegistrator and meta.json",
+    "Assembly": "ClipShare.dll"
+}
