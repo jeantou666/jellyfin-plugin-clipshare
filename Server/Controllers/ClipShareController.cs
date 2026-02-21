@@ -168,19 +168,42 @@ namespace ClipShare.Controllers
 
         private IActionResult ServeScript()
         {
-            var assembly = typeof(ClipSharePlugin).Assembly;
-            var resourceName = $"{typeof(ClipSharePlugin).Namespace}.Web.clipshare.js";
-
-            using var stream = assembly.GetManifestResourceStream(resourceName);
-            if (stream == null)
+            try
             {
-                return NotFound("Script not found");
+                var assembly = typeof(ClipSharePlugin).Assembly;
+                
+                // List all embedded resources for debugging
+                var resources = assembly.GetManifestResourceNames();
+                
+                // Try to find the script resource
+                var resourceName = "ClipShare.Web.clipshare.js";
+                
+                // If not found, try to find it by pattern
+                if (!resources.Contains(resourceName))
+                {
+                    resourceName = resources.FirstOrDefault(r => r.EndsWith("clipshare.js", StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (resourceName == null)
+                {
+                    return NotFound($"Script not found. Available: {string.Join(", ", resources)}");
+                }
+
+                using var stream = assembly.GetManifestResourceStream(resourceName);
+                if (stream == null)
+                {
+                    return NotFound("Script stream is null");
+                }
+
+                using var reader = new StreamReader(stream);
+                var script = reader.ReadToEnd();
+
+                return Content(script, "application/javascript");
             }
-
-            using var reader = new StreamReader(stream);
-            var script = reader.ReadToEnd();
-
-            return Content(script, "application/javascript");
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error loading script: {ex.Message}");
+            }
         }
 
         [HttpGet("Item/{id}")]
