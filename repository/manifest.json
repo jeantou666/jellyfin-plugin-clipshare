@@ -8,6 +8,14 @@
     "versions": [
       {
         "version": "2.2.7",
+        "changelog": "Auto build",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v2.2.7/clipshare.zip",
+        "checksum": "8049C108A2A86437934BDFDF78D2ED97",
+        "timestamp": "2026-02-21T22:04:13Z"
+      },
+      {
+        "version": "2.2.7",
         "changelog": "Added PluginServiceRegistrator and ServiceLocator for ILibraryManager",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/jeantou666/jellyfin-plugin-clipshare/releases/download/v2.2.7/clipshare.zip",
