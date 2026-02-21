@@ -148,6 +148,27 @@ namespace ClipShare.Controllers
             return File(stream, "video/mp4", enableRangeProcessing: true);
         }
 
+        /// <summary>
+        /// Serves the ClipShare JavaScript file.
+        /// </summary>
+        [HttpGet("Script/clipshare.js")]
+        public IActionResult GetScript()
+        {
+            var assembly = typeof(ClipSharePlugin).Assembly;
+            var resourceName = $"{typeof(ClipSharePlugin).Namespace}.Web.clipshare.js";
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+            {
+                return NotFound("Script not found");
+            }
+
+            using var reader = new StreamReader(stream);
+            var script = reader.ReadToEnd();
+
+            return Content(script, "application/javascript");
+        }
+
         [HttpGet("Item/{id}")]
         public IActionResult GetItemInfo(string id)
         {
